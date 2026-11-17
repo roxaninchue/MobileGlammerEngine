@@ -15,3 +15,10 @@ captures/
 *.so
 CMakeFiles/
 CMakeCache.txt
+
+# Signing: only the public debug key may be committed
+*.jks
+keystore/*
+!keystore/debug.keystore
+!keystore/README.md
+keystore.properties

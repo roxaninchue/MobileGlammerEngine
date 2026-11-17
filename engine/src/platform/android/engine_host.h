@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include "mge/render/renderer.h"
 
 namespace mge {
 
@@ -33,6 +34,9 @@ private:
     bool paused_ = false;
     bool quit_ = false;
     bool windowDirty_ = false;
+    bool sizeDirty_ = false;
+    render::Renderer* renderer_ = nullptr;
+    ANativeWindow* attached_ = nullptr;
 };
 
 EngineHost& engineHost();

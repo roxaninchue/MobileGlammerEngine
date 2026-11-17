@@ -20,3 +20,12 @@ void logf(LogLevel level, const char* fmt, ...) {
     va_end(args);
 }
 }
+
+#include "mge/assert.h"
+#include <cstdlib>
+namespace mge {
+void assertFailed(const char* expr, const char* file, int line, const char* msg) {
+    logf(LogLevel::Error, "ASSERT FAILED: %s (%s) at %s:%d", expr, msg, file, line);
+    std::abort();
+}
+}
