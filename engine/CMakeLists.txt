@@ -17,7 +17,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(mge_core PUBLIC Threads::Threads)
 target_include_directories(mge_core PUBLIC include)
 target_compile_options(mge_core PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti
-    $<$<CONFIG:Release>:-O2 -flto>)
+    "$<$<CONFIG:Release>:-O2;-flto>")
 
 if(MGE_PLATFORM_ANDROID)
     add_library(mge SHARED
