@@ -23,9 +23,11 @@ if(MGE_PLATFORM_ANDROID)
     add_library(mge SHARED
         src/platform/android/jni_bridge.cpp
         src/platform/android/engine_host.cpp
+        src/render/renderer.cpp
         src/render/vulkan/vk_renderer.cpp
+        src/render/gles/gles_renderer.cpp
     )
-    target_link_libraries(mge PRIVATE mge_core android log vulkan)
+    target_link_libraries(mge PRIVATE mge_core android log vulkan EGL GLESv3)
     target_compile_options(mge PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
     target_link_options(mge PRIVATE -Wl,--gc-sections -Wl,-z,max-page-size=16384)
 endif()

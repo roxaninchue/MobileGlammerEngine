@@ -394,12 +394,4 @@ Renderer* createVulkanRenderer() {
     return r;
 }
 
-Renderer* createGlesRenderer() { return nullptr; }   // M0 #8
-
-Renderer* createBestRenderer() {
-    if (Renderer* r = createVulkanRenderer()) return r;
-    MGE_LOGW("Vulkan unavailable, falling back to GLES3");
-    return createGlesRenderer();
-}
-
 }  // namespace mge::render

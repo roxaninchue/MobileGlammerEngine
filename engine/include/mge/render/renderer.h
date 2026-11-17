@@ -27,8 +27,8 @@ public:
 };
 
 Renderer* createVulkanRenderer();   // nullptr if Vulkan is unavailable or unsuitable
-Renderer* createGlesRenderer();     // M0 #8
-// Try Vulkan first, fall back to GLES3.
+Renderer* createGlesRenderer();     // nullptr if no ES 3.0 context can be created
+// Try Vulkan first, fall back to GLES3. debug.mge.renderer=gles|vulkan forces one.
 Renderer* createBestRenderer();
 
 }  // namespace mge::render
