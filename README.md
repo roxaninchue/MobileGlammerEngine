@@ -26,7 +26,7 @@ docs/          design docs
 ```
 
 ## License
-Proprietary, all rights reserved. Public for viewing only. See LICENSE.
+Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
 ## Status
 Project kickoff. See docs/ARCHITECTURE.md and docs/ROADMAP.md.
