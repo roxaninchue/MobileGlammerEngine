@@ -31,6 +31,15 @@ After editing anything in `engine/shaders/`, run `tools/compile_shaders.sh` (use
 `shader-tools/glslc`, or `glslangValidator`) and commit `engine/src/render/vulkan/generated/sprite_spv.h`.
 The GLES 3 copies of the sprite shaders live in `engine/src/render/gles/gles_renderer.cpp`.
 
+## Screen scaling
+`mge/render/camera.h` turns a design area (the world rect a game is authored for) plus the surface
+size and safe-area insets into a camera and viewport: `Letterbox`, `Expand` (default), `Crop`,
+`FitWidth` or `FitHeight`, optionally pixel perfect (whole screen pixels per texel). The app runs
+edge to edge and passes system-bar and cutout insets to the engine. Try the modes on the demo:
+
+    adb shell setprop debug.mge.scale letterbox     # letterbox|expand|crop|fitwidth|fitheight
+    adb shell setprop debug.mge.pixelperfect 1
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 

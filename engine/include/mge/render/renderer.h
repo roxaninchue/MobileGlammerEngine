@@ -12,7 +12,11 @@ namespace mge::render {
 enum class Backend { Vulkan, GLES3 };
 
 struct FrameInfo {
-    vec4 clearColor{0, 0, 0, 1};
+    vec4 clearColor{0, 0, 0, 1};               // fills the viewport
+    vec4 letterboxColor{0, 0, 0, 1};           // fills the surface outside the viewport
+    // Where the sprites' camera draws, in app-orientation surface pixels (ScreenLayout::viewport).
+    // Full (the default) = the whole surface. Sprites are scissored to it.
+    Viewport viewport{};
     const SpriteBatcher* sprites = nullptr;   // after end(); null = clear only
 };
 

@@ -20,14 +20,6 @@ vec4 unpackColor(uint32_t p) {
             float(p >> 24) * k};
 }
 
-Camera2D Camera2D::fitHeight(vec2 center, float visibleHeight, uint32_t w, uint32_t h) {
-    float aspect = h ? float(w) / float(h) : 1.0f;
-    Camera2D c;
-    c.center = center;
-    c.halfExtent = {visibleHeight * 0.5f * aspect, visibleHeight * 0.5f};
-    return c;
-}
-
 SpriteInstance SpriteBatcher::makeInstance(const Sprite& s) {
     const scene2d::Affine2& m = s.world;
     vec2 ax = m.applyDir({s.size.x, 0});

@@ -17,6 +17,8 @@ public:
     bool create(AAssetManager* assets, std::string dataPath);
     void setWindow(ANativeWindow* window);   // takes ownership of one reference; nullptr = surface gone
     void resize(int width, int height);
+    // Safe-area insets in surface pixels (system bars, display cutout), from WindowInsets.
+    void setInsets(int left, int top, int right, int bottom);
     void setPaused(bool paused);
     void destroy();
 
@@ -31,6 +33,7 @@ private:
     std::condition_variable cv_;
     ANativeWindow* window_ = nullptr;
     int width_ = 0, height_ = 0;
+    render::Insets insets_{};
     bool paused_ = false;
     bool quit_ = false;
     bool windowDirty_ = false;

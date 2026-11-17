@@ -132,7 +132,8 @@ public:
         stats_ = {};
 
         VkClearValue clear{};
-        std::memcpy(clear.color.float32, &info.clearColor.x, sizeof(float) * 4);
+        const vec4& passClear = info.viewport.full() ? info.clearColor : info.letterboxColor;
+        std::memcpy(clear.color.float32, &passClear.x, sizeof(float) * 4);
         VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rp.renderPass = renderPass_;
         rp.framebuffer = images_[image].framebuffer;
@@ -140,7 +141,21 @@ public:
         rp.clearValueCount = 1;
         rp.pClearValues = &clear;
         vkCmdBeginRenderPass(f.cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-        if (sprites) drawSprites(f, *sprites);
+        // Letterboxing: the pass cleared the whole image to the bar colour; clear the camera's
+        // viewport to the scene colour and scissor the sprites to it.
+        uint32_t appW = 0, appH = 0;
+        viewportSize(appW, appH);
+        const Viewport vp = clampViewport(info.viewport, appW, appH);
+        VkRect2D scissor{{0, 0}, extent_};
+        if (!vp.full()) {
+            const Viewport n = rotateToNative(vp, appW, appH, quarterTurns());
+            scissor = {{n.x, n.y}, {n.w, n.h}};
+            VkClearAttachment ca{VK_IMAGE_ASPECT_COLOR_BIT, 0, {}};
+            std::memcpy(ca.clearValue.color.float32, &info.clearColor.x, sizeof(float) * 4);
+            VkClearRect cr{scissor, 0, 1};
+            vkCmdClearAttachments(f.cmd, 1, &ca, 1, &cr);
+        }
+        if (sprites) drawSprites(f, *sprites, vp, appW, appH, scissor);
         vkCmdEndRenderPass(f.cmd);
         vkEndCommandBuffer(f.cmd);
 
@@ -817,16 +832,37 @@ private:
         out[0] = c; out[1] = s; out[2] = -s; out[3] = c;
     }
 
-    void drawSprites(Frame& f, const SpriteBatcher& batcher) {
+    int quarterTurns() const {
+        if (transform_ & VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR) return 1;
+        if (transform_ & VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR) return 2;
+        if (transform_ & VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) return 3;
+        return 0;
+    }
+
+    // A viewport computed for a stale surface size is clipped to the current one.
+    static Viewport clampViewport(Viewport vp, uint32_t appW, uint32_t appH) {
+        if (vp.full()) return vp;
+        const int32_t W = int32_t(appW), H = int32_t(appH);
+        int32_t x0 = vp.x < 0 ? 0 : vp.x, y0 = vp.y < 0 ? 0 : vp.y;
+        int32_t x1 = vp.x + int32_t(vp.w), y1 = vp.y + int32_t(vp.h);
+        if (x1 > W) x1 = W;
+        if (y1 > H) y1 = H;
+        if (x1 <= x0 || y1 <= y0) return Viewport{};
+        if (x0 == 0 && y0 == 0 && x1 == W && y1 == H) return Viewport{};
+        return {x0, y0, uint32_t(x1 - x0), uint32_t(y1 - y0)};
+    }
+
+    void drawSprites(Frame& f, const SpriteBatcher& batcher, const Viewport& vp, uint32_t appW, uint32_t appH,
+                     const VkRect2D& scissor) {
         vkCmdBindPipeline(f.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+        // The GPU viewport stays the whole image (pre-rotation works in full clip space); the
+        // camera's viewport is folded into the view transform and enforced by the scissor.
         VkViewport viewport{0, 0, float(extent_.width), float(extent_.height), 0, 1};
-        VkRect2D scissor{{0, 0}, extent_};
         vkCmdSetViewport(f.cmd, 0, 1, &viewport);
         vkCmdSetScissor(f.cmd, 0, 1, &scissor);
 
-        const Camera2D& cam = batcher.camera();
-        vec2 s = cam.scale();
-        PushConstants pc{{s.x, s.y, -cam.center.x * s.x, -cam.center.y * s.y}, {}};
+        const vec4 view = viewTransform(batcher.camera(), vp, appW, appH);
+        PushConstants pc{{view.x, view.y, view.z, view.w}, {}};
         preRotation(pc.preRotate);
         vkCmdPushConstants(f.cmd, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pc), &pc);
         VkDeviceSize zero = 0;

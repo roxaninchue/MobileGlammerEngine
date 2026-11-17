@@ -10,6 +10,8 @@ object NativeEngine {
     external fun create(assets: AssetManager, internalDataPath: String): Boolean
     external fun surfaceCreated(surface: Surface)
     external fun surfaceChanged(width: Int, height: Int)
+    /** Safe-area insets in surface pixels (system bars + display cutout). */
+    external fun setInsets(left: Int, top: Int, right: Int, bottom: Int)
     external fun surfaceDestroyed()
     external fun pause()
     external fun resume()
