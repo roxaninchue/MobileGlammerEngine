@@ -1,0 +1,44 @@
+MobileGlammerEngine Proprietary License
+
+Copyright (c) 2026 James. All rights reserved.
+
+This repository, including all source code, documentation, assets, designs,
+build scripts and any other material in it (the "Software"), is the exclusive
+property of the copyright holder.
+
+The Software is made publicly visible for reference only. Visibility does not
+grant any license. No permission is granted, express or implied, to:
+
+  1. use, run, compile, install or execute the Software, in whole or in part;
+  2. copy, reproduce, download for reuse, or store the Software, except for the
+     transient copies a web browser makes to display it;
+  3. modify, adapt, translate, port or create derivative works of the Software;
+  4. distribute, publish, sublicense, sell, lease, lend or otherwise make the
+     Software or any derivative available to anyone;
+  5. incorporate any part of the Software, including algorithms, code snippets
+     or architecture, into any other software, product or service;
+  6. use the Software, in whole or in part, to train, fine-tune, evaluate or
+     otherwise develop any machine learning or artificial intelligence model or
+     dataset;
+  7. reverse engineer, decompile or disassemble any binary built from the
+     Software;
+  8. remove or alter this notice or any copyright notice in the Software.
+
+Forking the repository on a hosting platform, where that platform's terms
+require it, grants no rights beyond viewing; the restrictions above apply to
+every fork and copy.
+
+Contributions: any contribution submitted to this repository is assigned to
+the copyright holder, who may use it without restriction or compensation.
+
+Any use not expressly permitted in writing by the copyright holder is
+prohibited and may result in civil and criminal liability. All rights not
+expressly granted are reserved.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE.
+
+For licensing enquiries, contact the copyright holder through the repository
+owner's GitLab profile.

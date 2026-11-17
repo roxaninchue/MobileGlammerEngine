@@ -1,6 +1,8 @@
 #include "engine_host.h"
 #include "mge/log.h"
 #include <chrono>
+#include <cmath>
+#include "mge/jobs.h"
 
 namespace mge {
 
@@ -27,7 +29,7 @@ void EngineHost::setWindow(ANativeWindow* window) {
 void EngineHost::resize(int width, int height) {
     std::lock_guard lock(mutex_);
     width_ = width; height_ = height;
-    windowDirty_ = true;
+    sizeDirty_ = true;
     cv_.notify_one();
 }
 
@@ -51,30 +53,57 @@ void EngineHost::destroy() {
 
 void EngineHost::renderLoop() {
     MGE_LOGI("Render thread started");
+    jobs::init();
+    renderer_ = render::createBestRenderer();
+    if (!renderer_) MGE_LOGE("No usable renderer (Vulkan and GLES3 both unavailable)");
+
     using clock = std::chrono::steady_clock;
-    auto last = clock::now();
+    const auto start = clock::now();
     for (;;) {
         ANativeWindow* window = nullptr;
+        bool windowChanged = false, sizeChanged = false;
         {
             std::unique_lock lock(mutex_);
             // Sleep (zero CPU) when paused or without a surface: lean by default.
-            cv_.wait(lock, [&] { return quit_ || (!paused_ && window_); });
+            cv_.wait(lock, [&] { return quit_ || (!paused_ && window_) || (windowDirty_ && !window_); });
             if (quit_) break;
-            if (windowDirty_) {
-                windowDirty_ = false;
-                MGE_LOGI("Surface %dx%d", width_, height_);
-                // M0 #7/#8: (re)create swapchain / GL surface here.
-            }
+            windowChanged = windowDirty_;
+            sizeChanged = sizeDirty_;
+            windowDirty_ = sizeDirty_ = false;
             window = window_;
+            if (window) ANativeWindow_acquire(window);   // hold our own ref while we use it
         }
-        (void)window;
-        auto now = clock::now();
-        float dt = std::chrono::duration<float>(now - last).count();
-        last = now;
-        (void)dt;
-        // M0 #7: renderer->beginFrame(); clear; present (present blocks on vsync).
-        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // placeholder until present paces us
+        if (renderer_) {
+            if (windowChanged && attached_) {
+                renderer_->detachWindow();
+                ANativeWindow_release(attached_);
+                attached_ = nullptr;
+            }
+            if (windowChanged && window) {
+                if (renderer_->attachWindow(window)) { attached_ = window; ANativeWindow_acquire(attached_); }
+                else MGE_LOGE("attachWindow failed");
+            }
+            if (sizeChanged && attached_) renderer_->resize(uint32_t(width_), uint32_t(height_));
+            if (attached_) {
+                // M0 demo: slowly cycling monochrome clear proves the loop runs. Present paces us to vsync.
+                float t = std::chrono::duration<float>(clock::now() - start).count();
+                float g = 0.08f + 0.06f * (0.5f + 0.5f * std::sin(t * 1.5f));
+                render::FrameInfo fi;
+                fi.clearColor = {g, g, g, 1};
+                if (!renderer_->renderFrame(fi)) std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (window) ANativeWindow_release(window);
     }
+    if (renderer_) {
+        renderer_->waitIdle();
+        if (attached_) { renderer_->detachWindow(); ANativeWindow_release(attached_); attached_ = nullptr; }
+        delete renderer_;
+        renderer_ = nullptr;
+    }
+    jobs::shutdown();
     MGE_LOGI("Render thread stopped");
 }
 

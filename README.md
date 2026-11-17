@@ -25,5 +25,8 @@ tools/         asset cookers, build scripts
 docs/          design docs
 ```
 
+## License
+Proprietary, all rights reserved. Public for viewing only. See LICENSE.
+
 ## Status
 Project kickoff. See docs/ARCHITECTURE.md and docs/ROADMAP.md.
