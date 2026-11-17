@@ -25,5 +25,14 @@ tools/         asset cookers, build scripts
 docs/          design docs
 ```
 
+## Shaders
+Vulkan SPIR-V is generated ahead of time and committed, so Gradle and CI never need a shader compiler.
+After editing anything in `engine/shaders/`, run `tools/compile_shaders.sh` (uses `glslc`, the NDK's
+`shader-tools/glslc`, or `glslangValidator`) and commit `engine/src/render/vulkan/generated/sprite_spv.h`.
+The GLES 3 copies of the sprite shaders live in `engine/src/render/gles/gles_renderer.cpp`.
+
+## License
+Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
+
 ## Status
 Project kickoff. See docs/ARCHITECTURE.md and docs/ROADMAP.md.
