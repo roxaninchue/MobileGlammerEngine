@@ -46,6 +46,7 @@ void SpriteBatcher::begin(const Camera2D& camera) {
     camera_ = camera;
     view_ = camera.bounds();
     pending_.clear();
+    prebuilt_.clear();
     keys_.clear();
     instances_.clear();
     batches_.clear();
@@ -58,25 +59,40 @@ void SpriteBatcher::submit(const Sprite& s) {
     if (cullingEnabled && !worldBounds(s).overlaps(view_)) { ++stats_.culled; return; }
     uint32_t idx = uint32_t(pending_.size());
     pending_.push_back(s);
-    keys_.push_back({s.layer, s.texture, idx});
+    keys_.push_back({s.layer, s.texture, uint32_t(keys_.size()), idx});
+}
+
+void SpriteBatcher::submitInstances(int16_t layer, TextureId texture, const SpriteInstance* data, uint32_t count) {
+    if (!data || count == 0) return;
+    stats_.submitted += count;
+    uint32_t idx = uint32_t(prebuilt_.size());
+    prebuilt_.push_back({data, count});
+    keys_.push_back({layer, texture, uint32_t(keys_.size()), idx | kPrebuilt});
 }
 
 void SpriteBatcher::end() {
-    // (layer, texture, submission order). Index is unique, so the order is total and stable.
+    // (layer, texture, submission order). Order is unique, so the sort is total and stable.
     std::sort(keys_.begin(), keys_.end(), [](const Key& a, const Key& b) {
         if (a.layer != b.layer) return a.layer < b.layer;
         if (a.texture != b.texture) return a.texture < b.texture;
-        return a.index < b.index;
+        return a.order < b.order;
     });
-    instances_.reserve(keys_.size());
+    size_t total = pending_.size();
+    for (const Prebuilt& p : prebuilt_) total += p.count;
+    instances_.reserve(total);
     for (const Key& k : keys_) {
-        const Sprite& s = pending_[k.index];
-        if (!batches_.empty() && batches_.back().texture == s.texture && batches_.back().layer == s.layer) {
-            ++batches_.back().instanceCount;
+        const uint32_t n = k.ref & kPrebuilt ? prebuilt_[k.ref & ~kPrebuilt].count : 1;
+        if (!batches_.empty() && batches_.back().texture == k.texture && batches_.back().layer == k.layer) {
+            batches_.back().instanceCount += n;
         } else {
-            batches_.push_back({s.texture, s.layer, uint32_t(instances_.size()), 1});
+            batches_.push_back({k.texture, k.layer, uint32_t(instances_.size()), n});
         }
-        instances_.push_back(makeInstance(s));
+        if (k.ref & kPrebuilt) {
+            const Prebuilt& p = prebuilt_[k.ref & ~kPrebuilt];
+            instances_.insert(instances_.end(), p.data, p.data + p.count);
+        } else {
+            instances_.push_back(makeInstance(pending_[k.ref]));
+        }
     }
     stats_.drawn = uint32_t(instances_.size());
     stats_.batches = uint32_t(batches_.size());

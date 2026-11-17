@@ -69,6 +69,9 @@ class SpriteBatcher {
 public:
     void begin(const Camera2D& camera);
     void submit(const Sprite& s);
+    // Already-built instances (e.g. a cached tilemap chunk), already culled by the caller.
+    // Sorted as one unit with the sprites; `data` must stay alive until end().
+    void submitInstances(int16_t layer, TextureId texture, const SpriteInstance* data, uint32_t count);
     void end();   // cull already happened in submit(); sorts and builds instances + batches
 
     const Camera2D& camera() const { return camera_; }
@@ -83,10 +86,13 @@ public:
     static Rect worldBounds(const Sprite& s);
 
 private:
-    struct Key { int16_t layer; TextureId texture; uint32_t index; };
+    static constexpr uint32_t kPrebuilt = 0x80000000u;
+    struct Key { int16_t layer; TextureId texture; uint32_t order; uint32_t ref; };   // ref: pending_ or prebuilt_ | kPrebuilt
+    struct Prebuilt { const SpriteInstance* data; uint32_t count; };
     Camera2D camera_;
     Rect view_{};
     std::vector<Sprite> pending_;
+    std::vector<Prebuilt> prebuilt_;
     std::vector<Key> keys_;
     std::vector<SpriteInstance> instances_;
     std::vector<DrawBatch> batches_;

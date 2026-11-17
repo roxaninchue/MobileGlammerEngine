@@ -7,6 +7,7 @@
 #include "mge/jobs.h"
 #include "mge/render/camera.h"
 #include "mge/render/sprite_batch.h"
+#include "mge/render/tilemap.h"
 #include "mge/texture.h"
 #include "mge/transform2d.h"
 
@@ -126,6 +127,22 @@ void EngineHost::renderLoop() {
     render::SpriteBatcher batcher;
     const render::DesignSpec design = demoDesign();
     render::ScreenLayout layout;
+    // Floor behind the sprite grid: a 128x64 tile map (8x4 chunks), wider than any screen shows,
+    // so only the visible chunks are drawn. One tile = the whole checker until #20 adds an atlas.
+    render::Tilemap floorMap;
+    auto buildFloor = [&](render::TextureId tex, uint32_t texW, uint32_t texH) {
+        render::Tileset ts;
+        ts.texture = tex;
+        ts.textureW = ts.tileW = texW ? texW : 1;
+        ts.textureH = ts.tileH = texH ? texH : 1;
+        floorMap.create(128, 64, ts, {1, 1}, 16);
+        floorMap.setOrigin({-64, -32});
+        floorMap.color = render::packGrey(0.22f);
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 128; ++x)
+                if ((x + y) % 11 != 0) floorMap.setTile(x, y, render::makeTile(0, x & 1, y & 1));   // diagonal gaps
+    };
+    buildFloor(render::kWhiteTexture, 1, 1);
     DemoStats stats;
 
     using clock = std::chrono::steady_clock;
@@ -162,6 +179,7 @@ void EngineHost::renderLoop() {
                 if (!checkerResolved && textures.state(checker) != assets::TextureCache::State::Loading) {
                     if (const assets::TextureData* d = textures.get(checker)) {
                         checkerGpu = renderer_->createTexture(*d);
+                        buildFloor(checkerGpu, d->width, d->height);
                         MGE_LOGI("Demo texture %s: %s %ux%u, %u mips", kCheckerPath, assets::formatName(d->format),
                                  d->width, d->height, d->mipCount);
                     } else {
@@ -177,6 +195,7 @@ void EngineHost::renderLoop() {
                 // Cheap to recompute every frame; picks up rotation and inset changes for free.
                 layout = render::ScreenLayout::compute(design, vw, vh, insets);
                 batcher.begin(layout.camera);
+                floorMap.draw(batcher);
                 for (int y = 0; y < kGridH; ++y) {
                     for (int x = 0; x < kGridW; ++x) {
                         const int i = y * kGridW + x;
@@ -215,6 +234,7 @@ void EngineHost::renderLoop() {
                              layout.viewport.w, layout.viewport.h, double(layout.pixelsPerUnit), layout.pixelScale,
                              double(layout.safeWorld.min.x), double(layout.safeWorld.min.y),
                              double(layout.safeWorld.max.x), double(layout.safeWorld.max.y));
+                    MGE_LOGI("Tilemap: %u chunks visible, %u tiles", floorMap.stats().chunksVisible, floorMap.stats().tilesDrawn);
                     MGE_LOGI("Stats: %.1f fps | draws %u | sprites %u drawn, %u culled | textures %u (%.1f KiB) | "
                              "cpu batch %.3f ms, frame %.2f ms (incl. vsync wait)",
                              double(stats.frames) / secs, rs.drawCalls, rs.sprites, ss.culled, rs.textures,

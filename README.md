@@ -40,6 +40,11 @@ edge to edge and passes system-bar and cutout insets to the engine. Try the mode
     adb shell setprop debug.mge.scale letterbox     # letterbox|expand|crop|fitwidth|fitheight
     adb shell setprop debug.mge.pixelperfect 1
 
+## Tilemaps
+`mge/render/tilemap.h`: grid tilesets (margin/spacing like Tiled, UV inset against seams), tiles
+with flip bits, 16x16 chunks that cache their instance mesh and rebuild only when edited. Each frame
+only chunks inside the camera rect are submitted, through the same sprite batches and shaders.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 

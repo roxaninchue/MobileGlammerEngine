@@ -18,6 +18,7 @@ add_library(mge_core STATIC
     src/assets/texture.cpp
     src/render/sprite_batch.cpp
     src/render/camera.cpp
+    src/render/tilemap.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(mge_core PUBLIC Threads::Threads)
@@ -42,7 +43,7 @@ endif()
 option(MGE_BUILD_TESTS "Build host unit tests" OFF)
 if(MGE_BUILD_TESTS AND NOT ANDROID)
     enable_testing()
-    add_executable(mge_tests tests/test_main.cpp tests/test_math.cpp tests/test_memory.cpp tests/test_jobs.cpp tests/test_ecs.cpp tests/test_transform2d.cpp tests/test_serialize.cpp tests/test_texture.cpp tests/test_sprite_batch.cpp tests/test_camera.cpp)
+    add_executable(mge_tests tests/test_main.cpp tests/test_math.cpp tests/test_memory.cpp tests/test_jobs.cpp tests/test_ecs.cpp tests/test_transform2d.cpp tests/test_serialize.cpp tests/test_texture.cpp tests/test_sprite_batch.cpp tests/test_camera.cpp tests/test_tilemap.cpp)
     target_link_libraries(mge_tests PRIVATE mge_core)
     target_compile_definitions(mge_tests PRIVATE MGE_FORCE_ASSERTS)
     add_test(NAME mge_tests COMMAND mge_tests)
