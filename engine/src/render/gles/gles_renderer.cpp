@@ -209,9 +209,22 @@ public:
         stats_ = {};
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width_, height_);
+        // The camera's viewport is folded into the view transform; here it only scissors.
+        const Viewport vp = clampViewport(frame.viewport);
+        const bool boxed = !vp.full();
+        if (boxed) {
+            const vec4& lb = frame.letterboxColor;
+            glDisable(GL_SCISSOR_TEST);
+            glClearColor(lb.x, lb.y, lb.z, lb.w);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glEnable(GL_SCISSOR_TEST);
+            // GL scissor origin is bottom-left; Viewport is top-left.
+            glScissor(vp.x, height_ - vp.y - GLint(vp.h), GLsizei(vp.w), GLsizei(vp.h));
+        }
         glClearColor(frame.clearColor.x, frame.clearColor.y, frame.clearColor.z, frame.clearColor.w);
         glClear(GL_COLOR_BUFFER_BIT);
-        if (frame.sprites) drawSprites(*frame.sprites);
+        if (frame.sprites) drawSprites(*frame.sprites, vp);
+        if (boxed) glDisable(GL_SCISSOR_TEST);
 
         // Nothing reads the colour target back next frame: let tilers skip the load.
         const GLenum color = GL_COLOR;
@@ -334,7 +347,20 @@ private:
                                          assets::formatName(t.data.format), t.data.width, t.data.height, err);
     }
 
-    void drawSprites(const SpriteBatcher& batcher) {
+    // A viewport computed for a stale surface size is clipped to the current one.
+    Viewport clampViewport(Viewport vp) const {
+        if (vp.full()) return vp;
+        const int32_t W = width_, H = height_;
+        int32_t x0 = vp.x < 0 ? 0 : vp.x, y0 = vp.y < 0 ? 0 : vp.y;
+        int32_t x1 = vp.x + int32_t(vp.w), y1 = vp.y + int32_t(vp.h);
+        if (x1 > W) x1 = W;
+        if (y1 > H) y1 = H;
+        if (x1 <= x0 || y1 <= y0) return Viewport{};
+        if (x0 == 0 && y0 == 0 && x1 == W && y1 == H) return Viewport{};
+        return {x0, y0, uint32_t(x1 - x0), uint32_t(y1 - y0)};
+    }
+
+    void drawSprites(const SpriteBatcher& batcher, const Viewport& vp) {
         const auto& inst = batcher.instances();
         if (inst.empty()) return;
         const size_t bytes = inst.size() * sizeof(SpriteInstance);
@@ -345,9 +371,9 @@ private:
         glBufferSubData(GL_ARRAY_BUFFER, 0, GLsizeiptr(bytes), inst.data());
 
         const Camera2D& cam = batcher.camera();
-        vec2 s = cam.scale();
+        const vec4 view = viewTransform(cam, vp, uint32_t(width_), uint32_t(height_));
         glUseProgram(program_);
-        glUniform4f(uView_, s.x, s.y, -cam.center.x * s.x, -cam.center.y * s.y);
+        glUniform4f(uView_, view.x, view.y, view.z, view.w);
         glBindVertexArray(vao_);
         glActiveTexture(GL_TEXTURE0);
 

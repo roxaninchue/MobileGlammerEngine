@@ -32,6 +32,11 @@ Java_com_glammer_mge_NativeEngine_surfaceChanged(JNIEnv*, jobject, jint w, jint 
 }
 
 JNIEXPORT void JNICALL
+Java_com_glammer_mge_NativeEngine_setInsets(JNIEnv*, jobject, jint l, jint t, jint r, jint b) {
+    engineHost().setInsets(l, t, r, b);
+}
+
+JNIEXPORT void JNICALL
 Java_com_glammer_mge_NativeEngine_surfaceDestroyed(JNIEnv*, jobject) {
     engineHost().setWindow(nullptr);
 }

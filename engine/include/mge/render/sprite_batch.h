@@ -4,12 +4,14 @@
 //    gl_VertexID, so there are no vertex or index buffers at all.
 //  - Sprites are sorted by layer, then texture, then submission order (stable), and each run
 //    of equal (layer, texture) becomes one instanced draw.
-//  - Sprites whose world-space bounds miss the camera rect are culled before sorting.
+//  - Sprites whose world-space bounds miss the camera rect are culled before sorting
+//    (Camera2D, Rect and screen scaling live in camera.h).
 // Pure CPU code: it lives in mge_core so the host tests cover it; the GLES3 and Vulkan
 // renderers only upload instances() and replay batches().
 #include <cstdint>
 #include <vector>
 #include "mge/math.h"
+#include "mge/render/camera.h"
 #include "mge/transform2d.h"
 
 namespace mge::render {
@@ -47,24 +49,6 @@ struct Sprite {
     uint32_t color = 0xFFFFFFFFu;
     TextureId texture = kWhiteTexture;
     int16_t layer = 0;               // lower layers draw first
-};
-
-// Axis-aligned world rectangle; the batcher culls against it.
-struct Rect {
-    vec2 min, max;
-    bool overlaps(const Rect& o) const {
-        return min.x <= o.max.x && max.x >= o.min.x && min.y <= o.max.y && max.y >= o.min.y;
-    }
-};
-
-// World -> clip: clip = (world - center) * scale. Y up, like the transforms.
-struct Camera2D {
-    vec2 center{};
-    vec2 halfExtent{1, 1};           // world units from center to each viewport edge
-    Rect bounds() const { return {center - halfExtent, center + halfExtent}; }
-    vec2 scale() const { return {1.0f / halfExtent.x, 1.0f / halfExtent.y}; }
-    // Fit `visibleHeight` world units vertically, width follows the viewport aspect.
-    static Camera2D fitHeight(vec2 center, float visibleHeight, uint32_t viewportW, uint32_t viewportH);
 };
 
 struct DrawBatch {
