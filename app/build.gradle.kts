@@ -24,7 +24,19 @@ android {
         }
     }
 
+    signingConfigs {
+        // Shared, public debug key (see keystore/README.md) so CI APKs update in place.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storeType = "pkcs12"
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug { signingConfig = signingConfigs.getByName("debug") }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
