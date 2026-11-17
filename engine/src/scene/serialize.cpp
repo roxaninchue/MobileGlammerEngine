@@ -81,18 +81,26 @@ struct Reader {
 };
 
 // ------------------------------------------------------------------ JSON
+// Members are a named struct rather than std::pair<std::string, JVal>: pair needs JVal complete,
+// which newer libstdc++ enforces (clang 19 + GCC 14 headers reject the recursive pair).
+struct JMember;
 struct JVal {
     enum Kind { Null, Bool, Num, Str, Arr, Obj } k = Null;
     double n = 0;
     bool b = false;
     std::string s;
     std::vector<JVal> a;
-    std::vector<std::pair<std::string, JVal>> o;
-    const JVal* get(std::string_view key) const {
-        for (auto& kv : o) if (kv.first == key) return &kv.second;
-        return nullptr;
-    }
+    std::vector<JMember> o;
+    const JVal* get(std::string_view key) const;
 };
+struct JMember {
+    std::string first;
+    JVal second;
+};
+inline const JVal* JVal::get(std::string_view key) const {
+    for (auto& kv : o) if (kv.first == key) return &kv.second;
+    return nullptr;
+}
 
 struct Parser {
     const char* p;
@@ -151,7 +159,7 @@ struct Parser {
                     if (p >= e || *p != ':') return false;
                     ++p;
                     if (!val(x)) return false;
-                    v.o.emplace_back(std::move(key), std::move(x));
+                    v.o.push_back(JMember{std::move(key), std::move(x)});
                 } else {
                     if (!val(x)) return false;
                     v.a.push_back(std::move(x));
