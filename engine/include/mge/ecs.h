@@ -87,6 +87,26 @@ public:
     }
     template <class T> bool has(Entity e) { return get<T>(e) != nullptr; }
 
+    // Type-erased access for serialization/editor. addRaw zero-fills a newly added component.
+    void* getRaw(Entity e, ComponentId c) {
+        if (!alive(e)) return nullptr;
+        const Record& r = records_[e.index];
+        Archetype* a = archetypes_[r.archetype - 1];
+        return a->has(c) ? static_cast<uint8_t*>(a->columns[c]) + size_t(detail::componentInfo(c).size) * r.row : nullptr;
+    }
+    void* addRaw(Entity e, ComponentId c) {
+        Record& r = record(e);
+        if (!archetypes_[r.archetype - 1]->has(c)) moveTo(e, archetypes_[r.archetype - 1]->mask | (uint64_t(1) << c));
+        Archetype* a = archetypes_[r.archetype - 1];
+        return static_cast<uint8_t*>(a->columns[c]) + size_t(detail::componentInfo(c).size) * r.row;
+    }
+    template <class Fn> void eachEntity(Fn&& fn) {
+        ++iterating_;
+        for (Archetype* a : archetypes_)
+            for (uint32_t i = 0; i < a->count; ++i) fn(a->entities[i]);
+        --iterating_;
+    }
+
     // fn(Entity, Ts&...) for every entity that has all of Ts.
     template <class... Ts, class Fn> void each(Fn&& fn) {
         const uint64_t need = (componentMask<Ts>() | ... | 0);

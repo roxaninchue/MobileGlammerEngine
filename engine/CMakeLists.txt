@@ -14,6 +14,7 @@ add_library(mge_core STATIC
     src/core/jobs.cpp
     src/core/ecs.cpp
     src/scene/transform2d.cpp
+    src/scene/serialize.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(mge_core PUBLIC Threads::Threads)
@@ -38,7 +39,7 @@ endif()
 option(MGE_BUILD_TESTS "Build host unit tests" OFF)
 if(MGE_BUILD_TESTS AND NOT ANDROID)
     enable_testing()
-    add_executable(mge_tests tests/test_main.cpp tests/test_math.cpp tests/test_memory.cpp tests/test_jobs.cpp tests/test_ecs.cpp tests/test_transform2d.cpp)
+    add_executable(mge_tests tests/test_main.cpp tests/test_math.cpp tests/test_memory.cpp tests/test_jobs.cpp tests/test_ecs.cpp tests/test_transform2d.cpp tests/test_serialize.cpp)
     target_link_libraries(mge_tests PRIVATE mge_core)
     target_compile_definitions(mge_tests PRIVATE MGE_FORCE_ASSERTS)
     add_test(NAME mge_tests COMMAND mge_tests)
