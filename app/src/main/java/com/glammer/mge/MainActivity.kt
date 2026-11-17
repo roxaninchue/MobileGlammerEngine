@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
                 )
                 // Editor chrome will live in Compose on top of the viewport
                 Text(
-                    "MobileGlammerEngine M0",
+                    "MobileGlammerEngine M1",
                     color = Color.White,
                     modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
                 )
