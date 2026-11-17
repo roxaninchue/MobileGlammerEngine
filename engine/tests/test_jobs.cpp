@@ -5,7 +5,9 @@
 using namespace mge;
 
 TEST(jobs_submit_and_wait) {
-    jobs::init();
+    jobs::Config cfg;
+    cfg.workerCount = 4;   // always exercise real contention, even on 1-core CI/sandboxes
+    jobs::init(cfg);
     std::atomic<int> sum{0};
     jobs::Counter c;
     static std::atomic<int>* s;
