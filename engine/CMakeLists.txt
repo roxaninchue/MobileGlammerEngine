@@ -9,7 +9,12 @@ option(MGE_PLATFORM_ANDROID "Build the Android platform layer" OFF)
 
 add_library(mge_core STATIC
     src/core/log.cpp
+    src/core/math.cpp
+    src/core/memory.cpp
+    src/core/jobs.cpp
 )
+find_package(Threads REQUIRED)
+target_link_libraries(mge_core PUBLIC Threads::Threads)
 target_include_directories(mge_core PUBLIC include)
 target_compile_options(mge_core PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti
     $<$<CONFIG:Release>:-O2 -flto>)
@@ -22,4 +27,14 @@ if(MGE_PLATFORM_ANDROID)
     target_link_libraries(mge PRIVATE mge_core android log)
     target_compile_options(mge PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
     target_link_options(mge PRIVATE -Wl,--gc-sections -Wl,-z,max-page-size=16384)
+endif()
+
+# Host unit tests (CI runs these on Linux; Android builds skip them).
+option(MGE_BUILD_TESTS "Build host unit tests" OFF)
+if(MGE_BUILD_TESTS AND NOT ANDROID)
+    enable_testing()
+    add_executable(mge_tests tests/test_main.cpp tests/test_math.cpp tests/test_memory.cpp tests/test_jobs.cpp)
+    target_link_libraries(mge_tests PRIVATE mge_core)
+    target_compile_definitions(mge_tests PRIVATE MGE_FORCE_ASSERTS)
+    add_test(NAME mge_tests COMMAND mge_tests)
 endif()
