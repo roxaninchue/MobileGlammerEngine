@@ -52,6 +52,12 @@ drag (with fling velocity) and pinch (scale, rotation, pan), with dp thresholds.
 actions to gestures or to screen regions (virtual buttons and sticks capture their finger, so it never
 becomes part of a gesture). In the demo, drag pans, pinch zooms around your fingers, double tap resets.
 
+## physics2d (in progress)
+`mge/physics2d/`: shapes (circle, box, convex polygon via hull, mass, AABBs, ray casts), a
+self-balancing dynamic AABB tree with fat AABBs and motion prediction, a broadphase that reports each
+new pair once, and contact manifolds (circle/circle, polygon/circle, polygon/polygon via SAT plus
+edge clipping) with stable feature ids and speculative contacts. The solver comes in #19.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
