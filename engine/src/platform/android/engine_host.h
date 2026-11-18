@@ -27,6 +27,8 @@ public:
     void touch(const input::TouchEvent& e) { touches_.push(e); }
     // Screen density (px per dp) for gesture thresholds.
     void setDensity(float density);
+    // Latest on-screen stats (a few short lines), refreshed twice a second. Any thread.
+    std::string statsText();
 
 private:
     void renderLoop();
@@ -47,6 +49,8 @@ private:
     bool quit_ = false;
     bool windowDirty_ = false;
     bool sizeDirty_ = false;
+    std::mutex statsMutex_;
+    std::string statsText_;
     render::Renderer* renderer_ = nullptr;
     ANativeWindow* attached_ = nullptr;
 };

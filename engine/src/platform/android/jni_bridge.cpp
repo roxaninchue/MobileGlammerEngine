@@ -72,6 +72,11 @@ Java_com_glammer_mge_NativeEngine_touch(JNIEnv* env, jobject, jint action, jint 
 JNIEXPORT void JNICALL
 Java_com_glammer_mge_NativeEngine_setDensity(JNIEnv*, jobject, jfloat density) { engineHost().setDensity(density); }
 
+JNIEXPORT jstring JNICALL
+Java_com_glammer_mge_NativeEngine_stats(JNIEnv* env, jobject) {
+    return env->NewStringUTF(engineHost().statsText().c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_com_glammer_mge_NativeEngine_surfaceDestroyed(JNIEnv*, jobject) {
     engineHost().setWindow(nullptr);

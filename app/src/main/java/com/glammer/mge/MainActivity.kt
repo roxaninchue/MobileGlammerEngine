@@ -10,14 +10,23 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -62,9 +71,26 @@ class MainActivity : ComponentActivity() {
                 )
                 // Editor chrome will live in Compose on top of the viewport
                 Text(
-                    "MobileGlammerEngine M1",
+                    "MobileGlammerEngine M1 - tap: drop, hold: blast, drag/pinch: camera",
                     color = Color.White,
-                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                    fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
+                )
+                // Live engine stats (frame time, draw calls, bodies, memory), polled twice a second.
+                var stats by remember { mutableStateOf("") }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        stats = NativeEngine.stats()
+                        delay(500)
+                    }
+                }
+                Text(
+                    stats,
+                    color = Color(0xFFB8F5C0),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(12.dp)
                 )
             }
         }

@@ -52,14 +52,42 @@ drag (with fling velocity) and pinch (scale, rotation, pan), with dp thresholds.
 actions to gestures or to screen regions (virtual buttons and sticks capture their finger, so it never
 becomes part of a gesture). In the demo, drag pans, pinch zooms around your fingers, double tap resets.
 
-## physics2d (in progress)
+## physics2d
 `mge/physics2d/`: shapes (circle, box, convex polygon via hull, mass, AABBs, ray casts), a
-self-balancing dynamic AABB tree with fat AABBs and motion prediction, a broadphase that reports each
-new pair once, and contact manifolds (circle/circle, polygon/circle, polygon/polygon via SAT plus
-edge clipping) with stable feature ids and speculative contacts. The solver comes in #19.
+self-balancing dynamic AABB tree with fat AABBs and motion prediction, contact manifolds
+(circle/circle, polygon/circle, polygon/polygon via SAT plus edge clipping) with stable feature ids
+and speculative contacts, and the `World` (`world.h`):
+- static, kinematic and dynamic bodies with any number of shapes; collision filters (category,
+  mask, group) and sensors; generational body/shape ids
+- fixed timestep (`advance(frameDt)` runs whole 1/60 s steps and returns the interpolation alpha;
+  frame rate never changes the result, and two runs are bit-identical)
+- sequential impulse solver: warm starting by feature id, friction, a 2x2 block solver for
+  two-point manifolds (stacks stay square), restitution with a velocity threshold, non-linear
+  position correction
+- islands and sleeping: resting islands cost nothing; anything touching an awake body wakes its island
+- events: contact begin/end, hits (approach speed), sensor begin/end; ray casts, AABB and point queries
+
+`physics_system.h` bridges it to the ECS: `RigidBody2D` component, poses written into `Transform2D`
+(interpolated), bodies removed with their entities, and events delivered as `CollisionEvent2D`
+records naming the entities.
+
+## Demo scene and benchmark
+`mge/demo/demo_scene.h` is the M1 sample: an ASCII-authored level (tilemap + merged static
+colliders), a big culled backdrop, a spawner pouring boxes and balls, a ramp, a kinematic platform,
+a sensor bin that turns visitors gold, and impact flashes, all drawn from one atlas
+(`tools/make_demo_atlas_ktx.py`). Tap drops a burst, long press blasts, drag/pinch/double tap move
+the camera. The app shows live stats (fps, frame time p95, CPU, physics, draw calls, sprites,
+bodies, memory) and a frame-time graph (green within 16.7 ms, amber up to 2x, red beyond); logcat
+gets a full report every 5 s.
+
+    adb shell setprop debug.mge.bench 800    # benchmark run: 800 bodies, 10 s warm-up, 20 s measured
+    adb logcat -s MGE | grep Benchmark       # report; JSON in /data/data/com.glammer.mge/files/bench.json
+    adb shell setprop debug.mge.overlay 0    # hide the frame-time graph
+
+Off device, `mge_bench [bodies] [seconds] [json]` (built with the tests) runs the same scene headless.
 
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
 ## Status
-Project kickoff. See docs/ARCHITECTURE.md and docs/ROADMAP.md.
+M0 and M1 (2D engine) complete; M2 (editor) next. See docs/ROADMAP.md.

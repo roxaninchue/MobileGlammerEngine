@@ -1,14 +1,14 @@
 # Roadmap
 
 ## M0 — Foundations
-- [ ] CMake + NDK build, Android app shell, JNI bridge
-- [ ] Core: math, allocators, job system, logging
-- [ ] Vulkan bootstrap with GLES fallback, clear-screen on device
+- [x] CMake + NDK build, Android app shell, JNI bridge
+- [x] Core: math, allocators, job system, logging
+- [x] Vulkan bootstrap with GLES fallback, clear-screen on device
 
 ## M1 — 2D engine
-- [ ] ECS + transforms + serialization
-- [ ] Sprite batcher, cameras, tilemaps
-- [ ] physics2d: shapes, broadphase, solver, collision events
+- [x] ECS + transforms + serialization
+- [x] Sprite batcher, cameras, tilemaps
+- [x] physics2d: shapes, broadphase, solver, collision events
 
 ## M2 — Editor v1
 - [ ] Hierarchy, inspector, touch gizmos, undo/redo

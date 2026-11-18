@@ -20,6 +20,8 @@ jobs:
         run: cmake --build build -j
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Benchmark (demo scene, headless)
+        run: ./build/mge_bench 600 15 build/bench.json && cat build/bench.json
 
   android-apk:
     runs-on: ubuntu-24.04
