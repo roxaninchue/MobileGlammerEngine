@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include "mge/input.h"
 #include "mge/render/renderer.h"
 
 namespace mge {
@@ -22,6 +23,11 @@ public:
     void setPaused(bool paused);
     void destroy();
 
+    // UI thread: raw touch events (surface pixels, CLOCK_MONOTONIC ns). Never blocks on a frame.
+    void touch(const input::TouchEvent& e) { touches_.push(e); }
+    // Screen density (px per dp) for gesture thresholds.
+    void setDensity(float density);
+
 private:
     void renderLoop();
 
@@ -34,6 +40,9 @@ private:
     ANativeWindow* window_ = nullptr;
     int width_ = 0, height_ = 0;
     render::Insets insets_{};
+    input::TouchQueue touches_{256};
+    float density_ = 1.0f;
+    bool densityDirty_ = false;
     bool paused_ = false;
     bool quit_ = false;
     bool windowDirty_ = false;

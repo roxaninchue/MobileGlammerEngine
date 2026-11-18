@@ -45,6 +45,13 @@ edge to edge and passes system-bar and cutout insets to the engine. Try the mode
 with flip bits, 16x16 chunks that cache their instance mesh and rebuild only when edited. Each frame
 only chunks inside the camera rect are submitted, through the same sprite batches and shaders.
 
+## Touch input
+`mge/input.h`: the UI thread forwards MotionEvents (no allocation) into a `TouchQueue` that coalesces
+moves; the engine thread drains it each frame. `GestureRecognizer` emits tap, double tap, long press,
+drag (with fling velocity) and pinch (scale, rotation, pan), with dp thresholds. `InputMap` binds named
+actions to gestures or to screen regions (virtual buttons and sticks capture their finger, so it never
+becomes part of a gesture). In the demo, drag pans, pinch zooms around your fingers, double tap resets.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 

@@ -36,6 +36,42 @@ Java_com_glammer_mge_NativeEngine_setInsets(JNIEnv*, jobject, jint l, jint t, ji
     engineHost().setInsets(l, t, r, b);
 }
 
+// action: 0 down, 1 move, 2 up, 3 cancel. For down/up only the pointer at actionIndex changed;
+// for move every pointer reports its position. xy holds count (x, y) pairs in surface pixels.
+JNIEXPORT void JNICALL
+Java_com_glammer_mge_NativeEngine_touch(JNIEnv* env, jobject, jint action, jint actionIndex, jint count,
+                                        jintArray ids, jfloatArray xy, jlong timeMs) {
+    using mge::input::TouchAction;
+    using mge::input::TouchEvent;
+    constexpr int kMax = mge::input::kMaxPointers;
+    if (count < 0) return;
+    if (count > kMax) count = kMax;
+    jint id[kMax];
+    jfloat pos[2 * kMax];
+    env->GetIntArrayRegion(ids, 0, count, id);
+    env->GetFloatArrayRegion(xy, 0, 2 * count, pos);
+    const int64_t t = int64_t(timeMs) * 1'000'000;
+    switch (action) {
+    case 0:
+    case 2:
+        if (actionIndex >= 0 && actionIndex < count)
+            engineHost().touch(TouchEvent{action == 0 ? TouchAction::Down : TouchAction::Up, id[actionIndex],
+                                          {pos[2 * actionIndex], pos[2 * actionIndex + 1]}, t});
+        break;
+    case 1:
+        for (int i = 0; i < count; ++i)
+            engineHost().touch(TouchEvent{TouchAction::Move, id[i], {pos[2 * i], pos[2 * i + 1]}, t});
+        break;
+    case 3:
+        engineHost().touch(TouchEvent{TouchAction::Cancel, -1, {}, t});
+        break;
+    default: break;
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_glammer_mge_NativeEngine_setDensity(JNIEnv*, jobject, jfloat density) { engineHost().setDensity(density); }
+
 JNIEXPORT void JNICALL
 Java_com_glammer_mge_NativeEngine_surfaceDestroyed(JNIEnv*, jobject) {
     engineHost().setWindow(nullptr);

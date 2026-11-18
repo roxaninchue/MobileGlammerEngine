@@ -93,6 +93,12 @@ void EngineHost::setInsets(int left, int top, int right, int bottom) {
     cv_.notify_one();
 }
 
+void EngineHost::setDensity(float density) {
+    std::lock_guard lock(mutex_);
+    density_ = density > 0.0f ? density : 1.0f;
+    densityDirty_ = true;
+}
+
 void EngineHost::setPaused(bool paused) {
     std::lock_guard lock(mutex_);
     paused_ = paused;
@@ -129,6 +135,7 @@ void EngineHost::renderLoop() {
     render::ScreenLayout layout;
     // Floor behind the sprite grid: a 128x64 tile map (8x4 chunks), wider than any screen shows,
     // so only the visible chunks are drawn. One tile = the whole checker until #20 adds an atlas.
+    using clock = std::chrono::steady_clock;
     render::Tilemap floorMap;
     auto buildFloor = [&](render::TextureId tex, uint32_t texW, uint32_t texH) {
         render::Tileset ts;
@@ -145,7 +152,20 @@ void EngineHost::renderLoop() {
     buildFloor(render::kWhiteTexture, 1, 1);
     DemoStats stats;
 
-    using clock = std::chrono::steady_clock;
+    // Touch: drag pans the demo camera (with fling), pinch zooms around the fingers,
+    // double tap resets the view.
+    input::GestureConfig gestureCfg;
+    input::InputMap inputMap(gestureCfg);
+    const input::ActionId actPan = inputMap.bind("pan", {input::BindingKind::Drag, input::Region::full()});
+    const input::ActionId actZoom = inputMap.bind("zoom", {input::BindingKind::Pinch, input::Region::full()});
+    const input::ActionId actReset = inputMap.bind("reset", {input::BindingKind::DoubleTap, input::Region::full()});
+    std::vector<input::TouchEvent> touchEvents;
+    touchEvents.reserve(256);
+    vec2 camOffset{};          // world units added to the layout camera's center
+    float camZoom = 1.0f;
+    vec2 flingVelocity{};      // world units per second
+    auto lastFrame = clock::now();
+
     const auto start = clock::now();
     for (;;) {
         ANativeWindow* window = nullptr;
@@ -161,6 +181,11 @@ void EngineHost::renderLoop() {
             windowDirty_ = sizeDirty_ = false;
             window = window_;
             insets = insets_;
+            if (densityDirty_) {
+                gestureCfg.density = density_;
+                inputMap.setConfig(gestureCfg);
+                densityDirty_ = false;
+            }
             if (window) ANativeWindow_acquire(window);   // hold our own ref while we use it
         }
         if (renderer_) {
@@ -194,6 +219,50 @@ void EngineHost::renderLoop() {
                 renderer_->viewportSize(vw, vh);
                 // Cheap to recompute every frame; picks up rotation and inset changes for free.
                 layout = render::ScreenLayout::compute(design, vw, vh, insets);
+
+                // Input: everything the UI thread queued since the last frame.
+                const float dt = min(std::chrono::duration<float>(t0 - lastFrame).count(), 0.1f);
+                lastFrame = t0;
+                touchEvents.clear();
+                touches_.drain(touchEvents);
+                inputMap.setSurfaceSize(layout.surfaceW, layout.surfaceH);
+                inputMap.update(touchEvents,
+                                std::chrono::duration_cast<std::chrono::nanoseconds>(t0.time_since_epoch()).count());
+                auto viewOf = [&](vec2 offset, float zoom) {
+                    render::ScreenLayout v = layout;
+                    v.camera = render::Camera2D{layout.camera.center + offset, layout.camera.halfExtent}.zoomed(zoom);
+                    return v;
+                };
+                const float worldPerPx = 1.0f / max(layout.pixelsPerUnit * camZoom, 1e-6f);
+                if (inputMap.action(actReset).pressed) {
+                    camOffset = {};
+                    camZoom = 1.0f;
+                    flingVelocity = {};
+                }
+                if (const input::ActionState& pan = inputMap.action(actPan); pan.held || pan.released) {
+                    camOffset -= vec2{pan.value.x, -pan.value.y} * worldPerPx;   // content follows the finger
+                    flingVelocity = {};
+                }
+                for (const input::Gesture& g : inputMap.gestures()) {
+                    if (g.type == input::GestureType::DragEnd && !g.cancelled)
+                        flingVelocity = -vec2{g.velocity.x, -g.velocity.y} * worldPerPx;
+                }
+                if (const input::ActionState& zoom = inputMap.action(actZoom); zoom.held || zoom.released) {
+                    // Keep the world point under the fingers fixed while zooming, then follow their pan.
+                    for (const input::Gesture& g : inputMap.gestures()) {
+                        if (g.type != input::GestureType::Pinch) continue;
+                        const vec2 before = viewOf(camOffset, camZoom).screenToWorld(g.pos - g.delta);
+                        camZoom = clamp(camZoom * g.scale, 0.25f, 8.0f);
+                        const vec2 after = viewOf(camOffset, camZoom).screenToWorld(g.pos);
+                        camOffset += before - after;
+                    }
+                    flingVelocity = {};
+                }
+                if (lengthSq(flingVelocity) > 1e-4f) {
+                    camOffset += flingVelocity * dt;
+                    flingVelocity *= std::exp(-4.0f * dt);   // ~0.25 s decay
+                }
+                layout = viewOf(camOffset, camZoom);
                 batcher.begin(layout.camera);
                 floorMap.draw(batcher);
                 for (int y = 0; y < kGridH; ++y) {

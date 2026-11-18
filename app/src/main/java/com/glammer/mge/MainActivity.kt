@@ -1,5 +1,6 @@
 package com.glammer.mge
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -27,11 +28,18 @@ class MainActivity : ComponentActivity() {
         override fun surfaceDestroyed(holder: SurfaceHolder) = NativeEngine.surfaceDestroyed()
     }
 
+    @SuppressLint("ClickableViewAccessibility")   // the viewport is a game surface, not a button
+    private val engineTouchListener = android.view.View.OnTouchListener { _, event ->
+        NativeEngine.sendTouch(event)
+        true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Draw under the system bars and cutout; the engine keeps gameplay inside the safe area.
         enableEdgeToEdge()
         NativeEngine.create(assets, filesDir.absolutePath)
+        NativeEngine.setDensity(resources.displayMetrics.density)
         setContent {
             Box(Modifier.fillMaxSize()) {
                 // Engine viewport
@@ -40,6 +48,8 @@ class MainActivity : ComponentActivity() {
                     factory = { ctx ->
                         SurfaceView(ctx).apply {
                             holder.addCallback(surfaceCallback)
+                            // Touches go straight to the engine thread; gestures are recognised natively.
+                            setOnTouchListener(engineTouchListener)
                             ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
                                 val safe = insets.getInsets(
                                     WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
