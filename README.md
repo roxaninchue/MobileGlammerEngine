@@ -117,6 +117,17 @@ Scene format v2 adds `Vec4`, `I16`, `U16` and `Str32` fields (v1 scenes still lo
 `Name` component; `SpriteRenderer` is now saved with scenes (tint and UVs; textures come with
 the asset browser).
 
+## Editor: touch gizmos
+`mge/editor/gizmo.h`: the selection gets finger-sized handles (sized in dp, generous hit areas):
+move (X/Y arrows on world or local axes, centre square for a free move), rotate (a ring; turns
+add up past 360 degrees) and scale (X/Y boxes on the entity's own axes, centre for uniform).
+Drags are solved in world space and written back in each entity's parent space, so a child of a
+rotated, scaled parent tracks the finger exactly; a multi-selection moves and rotates around the
+primary's pivot. Snapping (toolbar `#`) puts positions on the grid, angles on 15 degree steps and
+scales on 0.1 steps (all adjustable: `snap 1 <grid> <angle> <scale>`). The drag previews live
+and lands as one undo step when the finger lifts; a second finger cancels it. A drag that does
+not start on a handle still pans the view.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 

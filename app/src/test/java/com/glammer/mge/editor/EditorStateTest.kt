@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EditorStateTest {
-    // Captured from EditorSession::stateJson (starter scene, Hat selected and renamed).
+    // Captured from EditorSession::stateJson (starter scene, Hat selected and renamed, rotate gizmo, snap on).
     private val fixture = javaClass.classLoader!!.getResource("editor_state.json")!!.readText()
 
     @Test
@@ -26,6 +26,7 @@ class EditorStateTest {
         assertTrue(s.rows[1].expanded)
         assertEquals(1, s.rows[1].childCount)
         assertEquals(listOf(hat.id), s.selection)
+        assertEquals(GizmoSettings(GizmoMode.Rotate, local = false, snap = true, grid = 0.25f, angle = 15f, scaleStep = 0.1f), s.gizmo)
     }
 
     @Test
@@ -58,5 +59,6 @@ class EditorStateTest {
         assertTrue(s.locked)
         assertEquals(FieldType.Unknown, FieldType.of("Quaternion"))
         assertEquals(FieldHint.None, FieldHint.of(""))
+        assertEquals(GizmoSettings(), s.gizmo)   // older engines send no gizmo block
     }
 }

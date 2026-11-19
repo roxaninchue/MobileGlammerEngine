@@ -17,6 +17,7 @@ data class EditorState(
     val rows: List<TreeRow> = emptyList(),
     val selection: List<Int> = emptyList(),
     val inspector: InspectedEntity? = null,
+    val gizmo: GizmoSettings = GizmoSettings(),
 ) {
     val canUndo get() = undoLabel.isNotEmpty()
     val canRedo get() = redoLabel.isNotEmpty()
@@ -58,6 +59,16 @@ data class EditorState(
                     addable = i.optJSONArray("addable")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList(),
                 )
             }
+            val gizmo = o.optJSONObject("gizmo")?.let { g ->
+                GizmoSettings(
+                    mode = GizmoMode.of(g.optString("mode")),
+                    local = g.optBoolean("local"),
+                    snap = g.optBoolean("snap"),
+                    grid = g.optDouble("grid", 0.5).toFloat(),
+                    angle = g.optDouble("angle", 15.0).toFloat(),
+                    scaleStep = g.optDouble("scaleStep", 0.1).toFloat(),
+                )
+            } ?: GizmoSettings()
             return EditorState(
                 revision = o.optLong("rev", -1),
                 undoLabel = o.optString("undo"),
@@ -67,6 +78,7 @@ data class EditorState(
                 rows = rows,
                 selection = sel,
                 inspector = insp,
+                gizmo = gizmo,
             )
         }
 
@@ -123,3 +135,21 @@ enum class FieldHint {
         fun of(s: String) = entries.firstOrNull { it.name == s } ?: None
     }
 }
+
+enum class GizmoMode(val protocol: String) {
+    Move("move"), Rotate("rotate"), Scale("scale");
+
+    companion object {
+        fun of(s: String) = entries.firstOrNull { it.protocol == s } ?: Move
+    }
+}
+
+/** Gizmo mode, axis space and snapping (grid in world units, angle in degrees, scale step). */
+data class GizmoSettings(
+    val mode: GizmoMode = GizmoMode.Move,
+    val local: Boolean = false,
+    val snap: Boolean = false,
+    val grid: Float = 0.5f,
+    val angle: Float = 15f,
+    val scaleStep: Float = 0.1f,
+)

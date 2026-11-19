@@ -107,6 +107,14 @@ private fun EditorToolbar(
         ToolButton("+", editable) { send(EditorCommands.create(0, "Entity")) }
         ToolButton("⧉", editable && state.selection.isNotEmpty()) { send(EditorCommands.duplicate()) }
         ToolButton("✕", editable && state.selection.isNotEmpty()) { send(EditorCommands.delete()) }
+        Spacer(Modifier.width(8.dp))
+        // Gizmo: mode, snapping, axis space.
+        for ((mode, glyph) in listOf(GizmoMode.Move to "✥", GizmoMode.Rotate to "⟳", GizmoMode.Scale to "⤡")) {
+            ToggleButton(glyph, state.gizmo.mode == mode, editable) { send(EditorCommands.gizmo(mode)) }
+        }
+        val g = state.gizmo
+        ToggleButton("#", g.snap, editable) { send(EditorCommands.snap(!g.snap, g.grid, g.angle, g.scaleStep)) }
+        ToggleButton(if (g.local) "L" else "W", g.local, editable) { send(EditorCommands.space(!g.local)) }
         Spacer(Modifier.weight(1f))
         Text(
             if (state.canUndo) "Undo: ${state.undoLabel}" else "",
@@ -115,6 +123,20 @@ private fun EditorToolbar(
         )
         if (state.dirty) Text("●", color = Accent, fontSize = 12.sp)
         ToolButton("⚙", inspectorShown, onClick = toggleInspector)
+    }
+}
+
+@Composable
+private fun ToggleButton(label: String, on: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, enabled = enabled) {
+        Text(
+            label, fontSize = 16.sp,
+            color = when {
+                !enabled -> TextDim.copy(alpha = 0.4f)
+                on -> Accent
+                else -> TextMain
+            },
+        )
     }
 }
 

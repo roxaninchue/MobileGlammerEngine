@@ -11,7 +11,7 @@
 - [x] physics2d: shapes, broadphase, solver, collision events
 
 ## M2 — Editor v1
-- [ ] Hierarchy, inspector, touch gizmos, undo/redo
+- [x] Hierarchy, inspector, touch gizmos, undo/redo
 - [ ] Play-in-editor, save/load projects
 
 ## M3 — 3D engine

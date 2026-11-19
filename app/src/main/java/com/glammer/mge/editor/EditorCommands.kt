@@ -23,6 +23,10 @@ object EditorCommands {
     fun seal() = "seal"
     fun addComponent(id: Int, type: String) = "add $id $type"
     fun removeComponent(id: Int, type: String) = "remove $id $type"
+    fun gizmo(mode: GizmoMode) = "gizmo ${mode.protocol}"
+    fun space(local: Boolean) = "space ${if (local) "local" else "world"}"
+    fun snap(on: Boolean, grid: Float, angleDeg: Float, scaleStep: Float) =
+        "snap ${if (on) 1 else 0} ${FieldValues.formatFloat(grid)} ${FieldValues.formatFloat(angleDeg)} ${FieldValues.formatFloat(scaleStep)}"
     fun undo() = "undo"
     fun redo() = "redo"
 

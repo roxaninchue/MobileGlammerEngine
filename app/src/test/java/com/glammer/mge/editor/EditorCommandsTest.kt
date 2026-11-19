@@ -17,6 +17,10 @@ class EditorCommandsTest {
         assertEquals("scrub 9 5 Transform2D rotation 45", EditorCommands.scrub(9, 5, "Transform2D", "rotation", "45"))
         assertEquals("add 5 SpriteRenderer", EditorCommands.addComponent(5, "SpriteRenderer"))
         assertEquals("remove 5 SpriteRenderer", EditorCommands.removeComponent(5, "SpriteRenderer"))
+        assertEquals("gizmo scale", EditorCommands.gizmo(GizmoMode.Scale))
+        assertEquals("space local", EditorCommands.space(true))
+        assertEquals("snap 1 0.5 15 0.1", EditorCommands.snap(true, 0.5f, 15f, 0.1f))
+        assertEquals(GizmoMode.Move, GizmoMode.of("shear"))
     }
 
     @Test
