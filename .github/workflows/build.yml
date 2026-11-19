@@ -40,6 +40,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
+      # Maven Central fetches occasionally fail on hosted runners (seen: junit:junit:4.13.2 not
+      # resolved). Resolve the unit-test classpath up front, retrying with backoff, so a flaky
+      # download does not fail the build.
+      - name: Resolve unit-test dependencies (with retries)
+        run: |
+          for attempt in 1 2 3; do
+            if gradle :app:dependencies --configuration debugUnitTestRuntimeClasspath --refresh-dependencies -q > /dev/null; then
+              echo "dependencies resolved (attempt $attempt)"; exit 0
+            fi
+            echo "dependency resolution failed (attempt $attempt), retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          echo "dependency resolution failed after 3 attempts"; exit 1
       - name: App unit tests (editor UI model)
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Assemble debug APK
