@@ -284,7 +284,7 @@ void EngineHost::editorLoop(const char* backendName) {
             (redraw || hadCommands || viewport.needsRedraw() || session.revision() != drawnRev)) {
             const render::ScreenLayout& layout = viewport.layout();
             batcher.begin(layout.camera);
-            session.draw(batcher, layout.pixelsPerUnit);
+            session.draw(batcher, layout);
             batcher.end();
             render::FrameInfo fi;
             fi.clearColor = {0.10f, 0.11f, 0.13f, 1};

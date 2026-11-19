@@ -9,6 +9,8 @@
 //        reparent <id> <parent> <index>               reorder <id> <index>
 //        set <id> <Type> <field> <value>              scrub <key> <id> <Type> <field> <value>
 //        seal                   add <id> <Type>       remove <id> <Type>    undo     redo
+//        gizmo <move|rotate|scale>                    space <world|local>
+//        snap <0|1> [grid] [angleDeg] [scaleStep]
 //    Parent 0 means the scene root. Returns false for unknown or rejected commands.
 //  - stateJson(): what the panels show (tree rows, inspector of the primary selection,
 //    undo/redo labels, dirty flag), stamped with revision() so the UI re-reads only on change.
@@ -17,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include "mge/editor/command.h"
+#include "mge/editor/gizmo.h"
 #include "mge/editor/hierarchy.h"
 #include "mge/editor/inspector.h"
 #include "mge/render/sprite_batch.h"
@@ -44,9 +47,9 @@ public:
 
     // Resolves world transforms; call once per frame before draw().
     void update();
-    // Scene sprites, plus the editor overlay (grid, selection outlines) sized for
-    // `pixelsPerUnit` screen pixels per world unit. Between batcher.begin() and end().
-    void draw(render::SpriteBatcher& batcher, float pixelsPerUnit, bool overlay = true);
+    // Scene sprites, plus the editor overlay (grid, selection outlines, gizmo) sized for the
+    // view's pixels per world unit. Between batcher.begin() and end().
+    void draw(render::SpriteBatcher& batcher, const render::ScreenLayout& view, bool overlay = true);
 
     serial::Registry& registry() { return reg_; }
     ecs::World& world() { return *world_; }
@@ -56,6 +59,7 @@ public:
     Hierarchy& hierarchy() { return *hierarchy_; }
     Inspector& inspector() { return *inspector_; }
     Selection& selection() { return selection_; }
+    Gizmo& gizmo() { return gizmo_; }
 
     // Grid spacing in world units for the overlay (and snapping, later).
     float gridStep = 1.0f;
@@ -72,6 +76,7 @@ private:
     std::unique_ptr<Hierarchy> hierarchy_;
     std::unique_ptr<Inspector> inspector_;
     Selection selection_;
+    Gizmo gizmo_;
     uint64_t selRev_ = 0;   // selection changes; rebuild() seeds it so revision() keeps increasing
 };
 

@@ -105,15 +105,16 @@ TEST(editor_session_pick_and_draw) {
     CHECK(s.pick({1.0f, 1.5f}) == front && s.pick({2.5f, 0.0f}) == kNoUid);
 
     render::SpriteBatcher b;
-    b.begin(render::Camera2D{{0, 0}, {8, 4.5f}});
-    s.draw(b, 50.0f);
+    const render::ScreenLayout view = render::ScreenLayout::compute({}, 800, 450);   // 50 px per unit
+    b.begin(view.camera);
+    s.draw(b, view);
     b.end();
     const uint32_t withOverlay = b.stats().submitted;
-    b.begin(render::Camera2D{{0, 0}, {8, 4.5f}});
-    s.draw(b, 50.0f, false);
+    b.begin(view.camera);
+    s.draw(b, view, false);
     b.end();
     CHECK(b.stats().submitted == 1);              // only the visible sprite
-    CHECK(withOverlay >= 1 + 17 + 10 + 4);        // grid lines + selection outline
+    CHECK(withOverlay >= 1 + 17 + 10 + 4 + 5);    // grid lines + selection outline + gizmo
 }
 
 TEST(editor_viewport_tap_select_pan_zoom) {

@@ -12,6 +12,11 @@ SetComponentCommand::SetComponentCommand(SceneDoc& doc, Uid uid, const serial::R
     existed_ = !before_.empty();
 }
 
+SetComponentCommand::SetComponentCommand(Uid uid, const serial::Registry::Type& type, std::vector<uint8_t> before,
+                                         std::vector<uint8_t> after, std::string label)
+    : Command(CommandKind::SetComponent, label.empty() ? "Edit " + type.name : std::move(label)),
+      uid_(uid), type_(&type), before_(std::move(before)), after_(std::move(after)), existed_(!before_.empty()) {}
+
 bool SetComponentCommand::apply(SceneDoc& doc) { return doc.writeComponent(uid_, *type_, after_); }
 
 void SetComponentCommand::revert(SceneDoc& doc) {

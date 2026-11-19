@@ -182,19 +182,20 @@ void EditorSession::update() {
     transforms_->update(*world_);
 }
 
-void EditorSession::draw(render::SpriteBatcher& batcher, float ppu, bool overlay) {
+void EditorSession::draw(render::SpriteBatcher& batcher, const render::ScreenLayout& view, bool overlay) {
     render::submitSprites(*world_, batcher);
+    const float ppu = view.pixelsPerUnit;
     if (!overlay || ppu <= 0) return;
     const float px = 1.0f / ppu;
     // Grid: one line per step, coarser when zoomed out so there are never more than ~120.
-    const render::Rect view = batcher.camera().bounds();
+    const render::Rect bounds = batcher.camera().bounds();
     float step = gridStep > 0 ? gridStep : 1.0f;
-    while ((view.size().x + view.size().y) / step > 120.0f) step *= 2.0f;
+    while ((bounds.size().x + bounds.size().y) / step > 120.0f) step *= 2.0f;
     const uint32_t minor = render::packColor({1, 1, 1, 0.06f}), axis = render::packColor({1, 1, 1, 0.22f});
-    for (float x = std::floor(view.min.x / step) * step; x <= view.max.x; x += step)
-        line(batcher, {x, view.min.y}, {x, view.max.y}, px, std::fabs(x) < step * 0.5f ? axis : minor, -30000);
-    for (float y = std::floor(view.min.y / step) * step; y <= view.max.y; y += step)
-        line(batcher, {view.min.x, y}, {view.max.x, y}, px, std::fabs(y) < step * 0.5f ? axis : minor, -30000);
+    for (float x = std::floor(bounds.min.x / step) * step; x <= bounds.max.x; x += step)
+        line(batcher, {x, bounds.min.y}, {x, bounds.max.y}, px, std::fabs(x) < step * 0.5f ? axis : minor, -30000);
+    for (float y = std::floor(bounds.min.y / step) * step; y <= bounds.max.y; y += step)
+        line(batcher, {bounds.min.x, y}, {bounds.max.x, y}, px, std::fabs(y) < step * 0.5f ? axis : minor, -30000);
     // Selection: outline of each selected sprite (or a cross at the origin without one).
     const uint32_t primary = render::packColor({1.0f, 0.6f, 0.1f, 1}), secondary = render::packColor({1.0f, 0.85f, 0.4f, 0.8f});
     for (Uid u : selection_.all()) {
@@ -212,6 +213,10 @@ void EditorSession::draw(render::SpriteBatcher& batcher, float ppu, bool overlay
             line(batcher, o - vec2{0, 8 * px}, o + vec2{0, 8 * px}, 2 * px, c, 30000);
         }
     }
+    // Gizmo on the primary selection (not while playing: the scene is not editable then).
+    const Uid p = selection_.primary();
+    if (p != kNoUid && !stack_->locked() && world_->has<scene2d::Transform2D>(doc_->entity(p)))
+        gizmo_.draw(batcher, view, hierarchy_->worldMatrix(p));
 }
 
 bool EditorSession::handle(std::string_view line) {
@@ -273,6 +278,40 @@ bool EditorSession::handle(std::string_view line) {
         const std::string_view type = token(s), field = token(s);
         return inspector_->setField(id, type, field, rest(s), uint64_t(key));
     }
+    if (cmd == "gizmo") {
+        const std::string_view m = token(s);
+        if (m == "move") gizmo_.mode = GizmoMode::Move;
+        else if (m == "rotate") gizmo_.mode = GizmoMode::Rotate;
+        else if (m == "scale") gizmo_.mode = GizmoMode::Scale;
+        else return false;
+        ++selRev_;
+        return true;
+    }
+    if (cmd == "space") {
+        const std::string_view m = token(s);
+        if (m != "world" && m != "local") return false;
+        gizmo_.localSpace = m == "local";
+        ++selRev_;
+        return true;
+    }
+    if (cmd == "snap") {
+        if (!number(token(s), n)) return false;
+        SnapSettings snap = gizmo_.snap;
+        snap.enabled = n != 0;
+        float* opt[3] = {&snap.grid, &snap.angleDeg, &snap.scaleStep};
+        for (float* o : opt) {
+            const std::string_view t = token(s);
+            if (t.empty()) break;
+            std::string tmp(t);
+            char* end = nullptr;
+            const float v = std::strtof(tmp.c_str(), &end);
+            if (!end || *end || !(v > 0) || !std::isfinite(v)) return false;
+            *o = v;
+        }
+        gizmo_.snap = snap;
+        ++selRev_;
+        return true;
+    }
     if (cmd == "add" || cmd == "remove") {
         if (!uidArg(s, id)) return false;
         const std::string_view type = token(s);
@@ -295,6 +334,15 @@ std::string EditorSession::stateJson() {
     o += stack_->isDirty() ? "true" : "false";
     o += ",\"locked\":";
     o += stack_->locked() ? "true" : "false";
+    {
+        const char* modes[] = {"move", "rotate", "scale"};
+        char buf[192];
+        std::snprintf(buf, sizeof buf,
+                      ",\"gizmo\":{\"mode\":\"%s\",\"local\":%s,\"snap\":%s,\"grid\":%g,\"angle\":%g,\"scaleStep\":%g}",
+                      modes[int(gizmo_.mode)], gizmo_.localSpace ? "true" : "false", gizmo_.snap.enabled ? "true" : "false",
+                      double(gizmo_.snap.grid), double(gizmo_.snap.angleDeg), double(gizmo_.snap.scaleStep));
+        o += buf;
+    }
     o += ",\"rows\":[";
     bool first = true;
     for (const TreeRow& r : hierarchy_->rows(selection_)) {

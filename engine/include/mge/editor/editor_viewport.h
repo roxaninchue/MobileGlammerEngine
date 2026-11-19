@@ -2,7 +2,8 @@
 // Editor viewport (M2 #22): the scene view's camera and touch handling.
 //  - Tap picks the topmost sprite under the finger (tap on nothing clears the selection).
 //  - Drag pans (content follows the finger, with fling), pinch zooms around the fingers,
-//    double tap resets the camera.
+//    double tap resets the camera. A drag that starts on a gizmo handle (M2 #23) edits the
+//    selection instead; a second finger cancels that edit.
 //  - Tracks whether anything moved, so the host can render on demand: an idle editor draws
 //    nothing (lean by default, see docs/ARCHITECTURE.md).
 // Pure CPU code in mge_core, covered by host tests.
@@ -52,6 +53,7 @@ private:
     float zoom_ = 1.0f;
     vec2 fling_{};
     bool moved_ = true;
+    bool gizmoDrag_ = false;   // the current drag belongs to the gizmo
 };
 
 }  // namespace mge::editor

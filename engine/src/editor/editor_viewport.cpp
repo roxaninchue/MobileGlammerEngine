@@ -25,8 +25,34 @@ void EditorViewport::frame(EditorSession& session, const std::vector<input::Touc
     gestures_.update(nowNs, frameGestures_);
     if (!events.empty()) moved_ = true;
 
-    for (const Gesture& g : frameGestures_) {
+    Gizmo& gizmo = session.gizmo();
+    gizmo.density = gestures_.config().density;
+    for (size_t gi = 0; gi < frameGestures_.size(); ++gi) {
+        const Gesture& g = frameGestures_[gi];
         const float worldPerPx = 1.0f / max(view_.pixelsPerUnit, 1e-6f);
+        // A drag that starts on a gizmo handle edits the selection instead of panning.
+        if (g.type == GestureType::DragBegin && gizmo.begin(session, view_, g.start)) {
+            gizmoDrag_ = true;
+            gizmo.drag(session, view_, g.pos);
+            continue;
+        }
+        if (gizmoDrag_ && (g.type == GestureType::Drag || g.type == GestureType::DragEnd)) {
+            if (g.type == GestureType::Drag) {
+                gizmo.drag(session, view_, g.pos);
+                continue;
+            }
+            // A second finger (pinch) or a system cancel aborts the edit; a lift commits it.
+            bool pinchNext = false;
+            for (size_t k = gi + 1; k < frameGestures_.size(); ++k) pinchNext |= frameGestures_[k].type == GestureType::PinchBegin;
+            if (g.cancelled || pinchNext) {
+                gizmo.cancel(session);
+            } else {
+                gizmo.drag(session, view_, g.pos);
+                gizmo.end(session);
+            }
+            gizmoDrag_ = false;
+            continue;
+        }
         switch (g.type) {
             case GestureType::Tap:
                 if (view_.screenInViewport(g.pos)) session.select(session.pick(view_.screenToWorld(g.pos)));

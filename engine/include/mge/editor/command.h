@@ -54,6 +54,10 @@ public:
     // `after` uses the SceneDoc encoding (entity refs as ids); readComponent() gives one to edit.
     SetComponentCommand(SceneDoc& doc, Uid uid, const serial::Registry::Type& type, std::vector<uint8_t> after,
                         std::string label = {});
+    // With an explicit `before` (the component existed): for edits previewed live before they
+    // are recorded, like a gizmo drag.
+    SetComponentCommand(Uid uid, const serial::Registry::Type& type, std::vector<uint8_t> before,
+                        std::vector<uint8_t> after, std::string label);
     bool apply(SceneDoc& doc) override;
     void revert(SceneDoc& doc) override;
     bool mergeWith(const Command& next) override;
