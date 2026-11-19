@@ -137,6 +137,7 @@ void EngineHost::setDensity(float density) {
 void EngineHost::setPaused(bool paused) {
     std::lock_guard lock(mutex_);
     paused_ = paused;
+    if (paused && editorRunning_) autosaveWanted_ = true;   // save before the process may be killed
     wake_ = true;   // redraw once on resume
     cv_.notify_one();
 }
@@ -186,12 +187,15 @@ bool EngineHost::nextFrame(bool wantFrame, FrameState& fs) {
         std::unique_lock lock(mutex_);
         // Sleep (zero CPU) when paused, without a surface, or (editor) when nothing changed.
         cv_.wait(lock, [&] {
-            return quit_ || (windowDirty_ && !window_) ||
+            return quit_ || autosaveWanted_ || (windowDirty_ && !window_) ||
                    (!paused_ && window_ && (wantFrame || wake_ || windowDirty_ || sizeDirty_));
         });
         if (quit_) return false;
         fs.windowChanged = windowDirty_;
         fs.sizeChanged = sizeDirty_;
+        fs.paused = paused_;
+        fs.autosave = autosaveWanted_;
+        autosaveWanted_ = false;
         windowDirty_ = sizeDirty_ = wake_ = false;
         fs.window = window_;
         fs.insets = insets_;
@@ -225,7 +229,15 @@ void EngineHost::endFrame(FrameState& fs) {
 void EngineHost::editorLoop(const char* backendName) {
     using clock = std::chrono::steady_clock;
     editor::EditorSession session;
-    session.newScene(true);
+    // Projects live in the app's private files (M2 #25): reopen the last one, or start "My Game".
+    if (!session.openProjects(dataPath_ + "/projects")) {
+        MGE_LOGE("editor: projects folder unusable, editing an unsaved scene");
+        session.newScene(true);
+    }
+    {
+        std::lock_guard lock(mutex_);
+        editorRunning_ = true;
+    }
     editor::EditorViewport viewport;   // 16 x 9 world units, Expand
     input::GestureConfig gestureCfg;
     render::SpriteBatcher batcher;
@@ -242,9 +254,15 @@ void EngineHost::editorLoop(const char* backendName) {
         FrameState fs;
         // Play mode (M2 #24) runs at full rate; editing renders on demand.
         if (!nextFrame(redraw || viewport.touching() || session.play().playing(), fs)) break;
+        if (fs.autosave && !session.autosave()) MGE_LOGE("editor: autosave of '%s' failed", session.projectName().c_str());
         if (fs.densityChanged) {
             gestureCfg.density = fs.density;
             viewport.setGestureConfig(gestureCfg);
+        }
+        if (fs.paused) {   // woke only to save: no frame while in the background
+            redraw = true;
+            endFrame(fs);
+            continue;
         }
         if (fs.windowChanged || fs.sizeChanged) redraw = true;
         const auto t0 = clock::now();
@@ -310,6 +328,9 @@ void EngineHost::editorLoop(const char* backendName) {
         }
         endFrame(fs);
     }
+    session.autosave();   // quitting: keep the last edits
+    std::lock_guard lock(mutex_);
+    editorRunning_ = false;
 }
 
 // ------------------------------------------------------------------ M1 demo / benchmark

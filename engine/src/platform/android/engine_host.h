@@ -41,6 +41,8 @@ private:
         ANativeWindow* window = nullptr;
         render::Insets insets{};
         bool windowChanged = false, sizeChanged = false, densityChanged = false;
+        bool paused = false;     // app in the background: no frame, only housekeeping
+        bool autosave = false;   // editor: save the open project now (the app was just paused)
         float density = 1.0f;
     };
     void renderLoop();
@@ -65,6 +67,8 @@ private:
     float density_ = 1.0f;
     bool densityDirty_ = false;
     bool paused_ = false;
+    bool editorRunning_ = false;   // editorLoop owns the session (autosave on pause)
+    bool autosaveWanted_ = false;
     bool quit_ = false;
     bool windowDirty_ = false;
     bool sizeDirty_ = false;
