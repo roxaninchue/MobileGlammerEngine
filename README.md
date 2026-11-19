@@ -86,6 +86,17 @@ gets a full report every 5 s.
 
 Off device, `mge_bench [bodies] [seconds] [json]` (built with the tests) runs the same scene headless.
 
+## Editor: undo/redo
+`mge/editor/command.h`: every editor edit is a `Command` on a `CommandStack`. Commands name
+entities by `EditorId` (`mge/editor/scene_doc.h`), a stable id saved with the scene, so deleting
+an entity and undoing it brings back the same id and every other step in the history still finds
+it. Built-in commands cover any registered component (set, remove), entity subtrees (spawn,
+despawn: the snapshot keeps children and entity references) and groups. A gizmo drag or slider
+scrub pushes one command per frame with the same merge key; they fold into one undo step until
+the finger lifts (`seal()`). `begin()`/`end()` group a multi-entity edit into one step. History
+is capped (256 steps / 8 MiB by default, oldest dropped first), `isDirty()` tracks the last save
+across undo, redo and merges, and `lock()` freezes editing while the game plays in the editor.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
