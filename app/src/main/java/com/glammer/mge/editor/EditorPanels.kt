@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -75,11 +77,13 @@ private val scrubKeys = AtomicLong(1)
 fun EditorOverlay(state: EditorState, send: (String) -> Unit, modifier: Modifier = Modifier) {
     var showHierarchy by remember { mutableStateOf(true) }
     var showInspector by remember { mutableStateOf(true) }
+    var showProjects by remember { mutableStateOf(false) }
     Column(modifier) {
         EditorToolbar(
             state, send,
             showHierarchy, { showHierarchy = !showHierarchy },
             showInspector, { showInspector = !showInspector },
+            openProjects = { showProjects = true },
         )
         Row(Modifier.fillMaxWidth().weight(1f)) {
             if (showHierarchy) HierarchyPanel(state, send, Modifier.width(220.dp).fillMaxHeight())
@@ -88,6 +92,7 @@ fun EditorOverlay(state: EditorState, send: (String) -> Unit, modifier: Modifier
             if (showInspector && insp != null) InspectorPanel(insp, state.locked, send, Modifier.width(300.dp).fillMaxHeight())
         }
     }
+    if (showProjects) ProjectsDialog(state, send, onDismiss = { showProjects = false })
 }
 
 @Composable
@@ -98,6 +103,7 @@ private fun EditorToolbar(
     toggleHierarchy: () -> Unit,
     inspectorShown: Boolean,
     toggleInspector: () -> Unit,
+    openProjects: () -> Unit,
 ) {
     val editable = !state.locked
     val bar = when (state.play.state) {
@@ -110,6 +116,14 @@ private fun EditorToolbar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ToolButton("☰", hierarchyShown, onClick = toggleHierarchy)
+        // Project: name opens the projects dialog; ⤓ saves (also while playing: the scene from before play).
+        TextButton(onClick = openProjects) {
+            Text(
+                (state.project.name.ifEmpty { "Projects" }) + " ▾", color = TextMain, fontSize = 13.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp),
+            )
+        }
+        ToolButton("⤓", state.project.isOpen && state.dirty) { send(EditorCommands.save()) }
         ToolButton("↶", state.canUndo && editable) { send(EditorCommands.undo()) }
         ToolButton("↷", state.canRedo && editable) { send(EditorCommands.redo()) }
         ToolButton("+", editable) { send(EditorCommands.create(0, "Entity")) }
@@ -432,5 +446,153 @@ private fun CommitField(
                 if (focused && !it.isFocused) commit()
                 focused = it.isFocused
             },
+    )
+}
+
+// ------------------------------------------------------------------ projects (M2 #25)
+
+/** What the projects dialog is asking about on top of the list. */
+private sealed interface ProjectPrompt {
+    data object New : ProjectPrompt
+    data object SaveAs : ProjectPrompt
+    data object Rename : ProjectPrompt
+    /** Leaving a project with unsaved changes for [target] (open it, or create it when [create]). */
+    data class Unsaved(val target: String, val create: Boolean) : ProjectPrompt
+    data class Delete(val name: String) : ProjectPrompt
+}
+
+/**
+ * Projects (M2 #25): the open project (save, save as, rename), every other project on the
+ * device newest first (tap to open, ✕ to delete) and a new project. Leaving a project with
+ * unsaved changes asks first: save, don't save, or stay.
+ */
+@Composable
+fun ProjectsDialog(state: EditorState, send: (String) -> Unit, onDismiss: () -> Unit) {
+    var prompt by remember { mutableStateOf<ProjectPrompt?>(null) }
+    val project = state.project
+    val nowSec = System.currentTimeMillis() / 1000
+    fun leaveFor(target: String, create: Boolean) {
+        if (project.isOpen && state.dirty) prompt = ProjectPrompt.Unsaved(target, create)
+        else { Projects.switchTo(target, saveFirst = false, create = create).forEach(send); onDismiss() }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Projects") },
+        text = {
+            Column {
+                if (project.isOpen) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(project.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (state.dirty) Text(" ● unsaved", color = Accent, fontSize = 12.sp)
+                    }
+                    Row {
+                        TextButton(onClick = { send(EditorCommands.save()) }, enabled = state.dirty) { Text("Save") }
+                        TextButton(onClick = { prompt = ProjectPrompt.SaveAs }) { Text("Save as…") }
+                        TextButton(onClick = { prompt = ProjectPrompt.Rename }) { Text("Rename") }
+                    }
+                }
+                val others = project.list.filter { Projects.slug(it.name) != Projects.slug(project.name) }
+                if (others.isNotEmpty()) {
+                    Text("Open", color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                    LazyColumn(Modifier.heightIn(max = 260.dp)) {
+                        items(others, key = { it.name }) { p ->
+                            Row(
+                                Modifier.fillMaxWidth().combinedClickableCompat { leaveFor(p.name, create = false) }.padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(Projects.ago(p.modified, nowSec), color = TextDim, fontSize = 11.sp)
+                                }
+                                Text(
+                                    "✕", color = TextDim, fontSize = 14.sp,
+                                    modifier = Modifier.combinedClickableCompat { prompt = ProjectPrompt.Delete(p.name) }.padding(8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { prompt = ProjectPrompt.New }) { Text("+ New project") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+    when (val p = prompt) {
+        null -> Unit
+        ProjectPrompt.New -> NameDialog("New project", "", project, checkTaken = false, onDismiss = { prompt = null }) {
+            prompt = null
+            leaveFor(it, create = true)
+        }
+        ProjectPrompt.SaveAs -> NameDialog("Save as", project.name, project, checkTaken = true, onDismiss = { prompt = null }) {
+            send(EditorCommands.saveAs(it))
+            prompt = null
+        }
+        ProjectPrompt.Rename -> NameDialog("Rename project", project.name, project, checkTaken = true, onDismiss = { prompt = null }) {
+            send(EditorCommands.renameProject(it))
+            prompt = null
+        }
+        is ProjectPrompt.Unsaved -> AlertDialog(
+            onDismissRequest = { prompt = null },
+            title = { Text("Save changes to ${project.name}?") },
+            text = { Text("Your changes will be lost if you don't save them.") },
+            confirmButton = {
+                TextButton(onClick = { Projects.switchTo(p.target, saveFirst = true, create = p.create).forEach(send); prompt = null; onDismiss() }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { prompt = null }) { Text("Cancel") }
+                    TextButton(onClick = { Projects.switchTo(p.target, saveFirst = false, create = p.create).forEach(send); prompt = null; onDismiss() }) {
+                        Text("Don't save")
+                    }
+                }
+            },
+        )
+        is ProjectPrompt.Delete -> AlertDialog(
+            onDismissRequest = { prompt = null },
+            title = { Text("Delete ${p.name}?") },
+            text = { Text("The project and its scene are removed from this device. This can't be undone.") },
+            confirmButton = { TextButton(onClick = { send(EditorCommands.deleteProject(p.name)); prompt = null }) { Text("Delete", color = Color(0xFFEF5350)) } },
+            dismissButton = { TextButton(onClick = { prompt = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Project name prompt; explains why a name can't be used (empty, too long, taken). */
+@Composable
+private fun NameDialog(
+    title: String,
+    initial: String,
+    project: ProjectState,
+    checkTaken: Boolean,   // save as / rename must not collide; a new project gets a fresh name ("Moon 2")
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    val name = text.trim()
+    val error = when {
+        name.isEmpty() -> null
+        !Projects.isValidName(name) -> "Use up to ${Projects.MAX_NAME} characters, with at least one letter or digit."
+        checkTaken && Projects.takenByOther(project, name) -> "Another project has this name."
+        else -> null
+    }
+    val ok = name.isNotEmpty() && error == null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                TextField(
+                    value = text, onValueChange = { text = it }, singleLine = true, isError = error != null,
+                    placeholder = { Text("Name") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (ok) onDone(name) }),
+                )
+                if (error != null) Text(error, color = Color(0xFFEF5350), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDone(name) }, enabled = ok) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

@@ -12,7 +12,7 @@
 
 ## M2 — Editor v1
 - [x] Hierarchy, inspector, touch gizmos, undo/redo
-- [ ] Play-in-editor, save/load projects
+- [x] Play-in-editor, save/load projects
 
 ## M3 — 3D engine
 - [ ] Mesh/material pipeline, forward+ lighting, shadows

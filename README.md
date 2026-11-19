@@ -138,6 +138,19 @@ in the same world: same ids, same values, selection and undo history intact. Whi
 inspector shows live values (refreshed four times a second) and the hierarchy still selects.
 Enum fields (a collider's body type and shape) edit from a menu of their options.
 
+## Editor: projects
+`mge/editor/project.h`: work is saved as projects in the app's private storage, one folder each
+(`project.json` with the name and save time, `main.scene.json` with the scene as readable JSON).
+The editor reopens the last project on launch (the first launch creates "My Game" from the
+starter scene) and saves the open project whenever the app goes to the background, so a phone
+killing the process never loses edits. The toolbar shows the project's name (tap for the
+projects dialog) and `⤓` saves. The dialog saves, saves as, renames, opens another project
+(asking to save unsaved changes first), creates and deletes projects. Saving while playing
+writes the scene from before play. Every write goes through a temporary file and a rename, so
+a crash mid-save never leaves a torn scene, and a file that does not load is refused without
+touching the open scene. Protocol: `save`, `saveas <name>`, `open <name>`,
+`newproject [name]`, `renameproject <name>`, `deleteproject <name>`.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
