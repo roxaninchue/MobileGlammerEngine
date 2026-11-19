@@ -46,13 +46,16 @@ jobs:
       - name: Resolve unit-test dependencies (with retries)
         run: |
           for attempt in 1 2 3; do
-            if gradle :app:dependencies --configuration debugUnitTestRuntimeClasspath --refresh-dependencies -q > /dev/null; then
+            if gradle :app:dependencies --configuration debugUnitTestRuntimeClasspath --refresh-dependencies --stacktrace > deps.log 2>&1; then
               echo "dependencies resolved (attempt $attempt)"; exit 0
             fi
             echo "dependency resolution failed (attempt $attempt), retrying in $((attempt * 20)) s"
+            grep -E "What went wrong|Could not|> |Caused by" deps.log | head -40 || true
             sleep $((attempt * 20))
           done
-          echo "dependency resolution failed after 3 attempts"; exit 1
+          echo "dependency resolution failed after 3 attempts; full log of the last one:"
+          tail -150 deps.log
+          exit 1
       - name: App unit tests (editor UI model)
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Assemble debug APK
