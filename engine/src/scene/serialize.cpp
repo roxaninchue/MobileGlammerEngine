@@ -263,8 +263,9 @@ void registerScene2D(Registry& reg) {
         if (!w.has<WorldTransform2D>(e)) w.add<WorldTransform2D>(e);
         w.get<Transform2D>(e)->dirty = 1;
     };
-    reg.add<Parent>("Parent", {MGE_FIELD(Parent, entity, Entity)});
-    reg.add<Name>("Name", {MGE_FIELD(Name, text, Str32)});
+    // Hidden from the inspector: the hierarchy panel edits parents and names.
+    reg.add<Parent>("Parent", {MGE_FIELD(Parent, entity, Entity)}).editorHidden = true;
+    reg.add<Name>("Name", {MGE_FIELD(Name, text, Str32)}).editorHidden = true;
 }
 
 // ------------------------------------------------------------------ binary save/load
