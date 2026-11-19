@@ -128,6 +128,16 @@ scales on 0.1 steps (all adjustable: `snap 1 <grid> <angle> <scale>`). The drag 
 and lands as one undo step when the finger lifts; a second finger cancels it. A drag that does
 not start on a handle still pans the view.
 
+## Editor: play-in-editor
+`mge/editor/play_session.h`: the toolbar's centre group plays the scene being edited. Play
+snapshots the scene, locks editing and undo, builds physics bodies from each `Collider2D` and
+runs the game at full frame rate; the toolbar turns green and shows the simulated clock and
+step count. Pause freezes the simulation (amber toolbar), step advances exactly one fixed
+physics step, resume carries on. Stop throws the played world away and restores the snapshot
+in the same world: same ids, same values, selection and undo history intact. While playing the
+inspector shows live values (refreshed four times a second) and the hierarchy still selects.
+Enum fields (a collider's body type and shape) edit from a menu of their options.
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 

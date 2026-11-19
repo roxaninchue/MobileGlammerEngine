@@ -18,6 +18,7 @@ data class EditorState(
     val selection: List<Int> = emptyList(),
     val inspector: InspectedEntity? = null,
     val gizmo: GizmoSettings = GizmoSettings(),
+    val play: PlayInfo = PlayInfo(),
 ) {
     val canUndo get() = undoLabel.isNotEmpty()
     val canRedo get() = redoLabel.isNotEmpty()
@@ -52,6 +53,7 @@ data class EditorState(
                                     type = FieldType.of(f.optString("type")),
                                     hint = FieldHint.of(f.optString("hint")),
                                     value = f.optString("value"),
+                                    options = f.optJSONArray("options")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList(),
                                 )
                             },
                         )
@@ -69,6 +71,13 @@ data class EditorState(
                     scaleStep = g.optDouble("scaleStep", 0.1).toFloat(),
                 )
             } ?: GizmoSettings()
+            val play = o.optJSONObject("play")?.let { p ->
+                PlayInfo(
+                    state = PlayState.of(p.optString("state")),
+                    time = p.optDouble("time", 0.0).toFloat(),
+                    steps = p.optLong("steps", 0),
+                )
+            } ?: PlayInfo()
             return EditorState(
                 revision = o.optLong("rev", -1),
                 undoLabel = o.optString("undo"),
@@ -79,6 +88,7 @@ data class EditorState(
                 selection = sel,
                 inspector = insp,
                 gizmo = gizmo,
+                play = play,
             )
         }
 
@@ -106,11 +116,18 @@ data class InspectedEntity(
 
 data class InspectedComponent(val type: String, val removable: Boolean, val fields: List<InspectedField>)
 
-data class InspectedField(val name: String, val type: FieldType, val hint: FieldHint, val value: String) {
+data class InspectedField(
+    val name: String,
+    val type: FieldType,
+    val hint: FieldHint,
+    val value: String,
+    /** Enum hint only: option names in value order; the value is one of them. */
+    val options: List<String> = emptyList(),
+) {
     /** Number of numeric parts the field edits as (Vec2 = 2, Vec4 = 4, scalars = 1, text = 0). */
     val parts: Int
         get() = when {
-            hint == FieldHint.Bool || hint == FieldHint.Color -> 0
+            hint == FieldHint.Bool || hint == FieldHint.Color || hint == FieldHint.Enum -> 0
             type == FieldType.Vec2 -> 2
             type == FieldType.Vec4 -> 4
             type == FieldType.Str32 || type == FieldType.Unknown -> 0
@@ -129,7 +146,7 @@ enum class FieldType {
 }
 
 enum class FieldHint {
-    None, Angle, Color, Bool, Hidden;
+    None, Angle, Color, Bool, Hidden, Enum;
 
     companion object {
         fun of(s: String) = entries.firstOrNull { it.name == s } ?: None
@@ -153,3 +170,20 @@ data class GizmoSettings(
     val angle: Float = 15f,
     val scaleStep: Float = 0.1f,
 )
+
+/** Play-in-editor state (EditorSession "play" object): editing, playing or paused. */
+enum class PlayState(val protocol: String) {
+    Editing("editing"), Playing("playing"), Paused("paused");
+
+    companion object {
+        fun of(s: String) = entries.firstOrNull { it.protocol == s } ?: Editing
+    }
+}
+
+/** Play state, simulated seconds since play and fixed physics steps run. */
+data class PlayInfo(val state: PlayState = PlayState.Editing, val time: Float = 0f, val steps: Long = 0) {
+    /** Playing or paused: the scene is the game's, edits and undo are locked. */
+    val active get() = state != PlayState.Editing
+    val playing get() = state == PlayState.Playing
+    val paused get() = state == PlayState.Paused
+}

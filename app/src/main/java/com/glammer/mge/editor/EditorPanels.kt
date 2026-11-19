@@ -59,6 +59,9 @@ private val TextMain = Color(0xFFE8EAED)
 private val TextDim = Color(0xFF9AA0A6)
 private val FieldBg = Color(0xFF2A2E36)
 private val Accent = Color(0xFFFFA726)
+private val PlayTint = Color(0xE0213A2A)     // toolbar while playing: the scene is the game's
+private val PausedTint = Color(0xE03A3421)   // toolbar while paused
+private val PlayGreen = Color(0xFF66BB6A)
 
 /** One scrub key per drag gesture: every scrub with the same key is one undo step. */
 private val scrubKeys = AtomicLong(1)
@@ -97,8 +100,13 @@ private fun EditorToolbar(
     toggleInspector: () -> Unit,
 ) {
     val editable = !state.locked
+    val bar = when (state.play.state) {
+        PlayState.Editing -> PanelBg
+        PlayState.Playing -> PlayTint
+        PlayState.Paused -> PausedTint
+    }
     Row(
-        Modifier.fillMaxWidth().background(PanelBg).padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().background(bar).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ToolButton("☰", hierarchyShown, onClick = toggleHierarchy)
@@ -116,13 +124,37 @@ private fun EditorToolbar(
         ToggleButton("#", g.snap, editable) { send(EditorCommands.snap(!g.snap, g.grid, g.angle, g.scaleStep)) }
         ToggleButton(if (g.local) "L" else "W", g.local, editable) { send(EditorCommands.space(!g.local)) }
         Spacer(Modifier.weight(1f))
+        PlayGroup(state.play, send)
+        Spacer(Modifier.weight(1f))
         Text(
-            if (state.canUndo) "Undo: ${state.undoLabel}" else "",
+            if (state.canUndo && !state.play.active) "Undo: ${state.undoLabel}" else "",
             color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         if (state.dirty) Text("●", color = Accent, fontSize = 12.sp)
         ToolButton("⚙", inspectorShown, onClick = toggleInspector)
+    }
+}
+
+/**
+ * Play controls (M2 #24): play / pause / resume, step one physics step while paused, stop back
+ * to the scene as it was before play, and the simulated clock.
+ */
+@Composable
+private fun PlayGroup(play: PlayInfo, send: (String) -> Unit) {
+    val c = PlayControls(play)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = { send(c.primary) }) {
+            Text(c.primaryGlyph, fontSize = 18.sp, color = if (play.playing) Accent else PlayGreen)
+        }
+        ToolButton("⏭", c.canStep) { send(EditorCommands.step()) }
+        ToolButton("■", c.canStop) { send(EditorCommands.stop()) }
+        if (play.active) {
+            Text(
+                c.clock, color = if (play.playing) PlayGreen else Accent, fontSize = 11.sp, maxLines = 1,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
     }
 }
 
@@ -295,6 +327,9 @@ private fun FieldRow(id: Int, type: String, f: InspectedField, locked: Boolean, 
                 checked = f.value == "true", enabled = !locked,
                 onCheckedChange = { send(EditorCommands.set(id, type, f.name, if (it) "true" else "false")) },
             )
+            f.hint == FieldHint.Enum -> EnumField(f, !locked, Modifier.weight(1f)) {
+                send(EditorCommands.set(id, type, f.name, it))
+            }
             f.hint == FieldHint.Color -> {
                 val argb = FieldValues.colorArgb(f.value)
                 Box(Modifier.size(18.dp).background(if (argb != null) Color(argb) else Color.Magenta, RoundedCornerShape(3.dp)))
@@ -314,6 +349,25 @@ private fun FieldRow(id: Int, type: String, f: InspectedField, locked: Boolean, 
                 if (f.type.isInteger) KeyboardType.Number else KeyboardType.Decimal,
             ) { send(EditorCommands.set(id, type, f.name, it)) }
             else -> CommitField(f.value, !locked, Modifier.weight(1f)) { send(EditorCommands.set(id, type, f.name, it)) }
+        }
+    }
+}
+
+/** Enum field: the current option, tap for a menu of the others. */
+@Composable
+private fun EnumField(f: InspectedField, enabled: Boolean, modifier: Modifier, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Text(
+            "${f.value} ▾", color = if (enabled) TextMain else TextDim, fontSize = 13.sp, maxLines = 1,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(FieldBg, RoundedCornerShape(4.dp))
+                .combinedClickableCompat { if (enabled) open = true }
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (o in f.options) MenuItem(o, true) { open = false; if (o != f.value) onPick(o) }
         }
     }
 }

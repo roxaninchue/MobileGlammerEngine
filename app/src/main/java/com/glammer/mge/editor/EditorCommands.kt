@@ -28,6 +28,10 @@ object EditorCommands {
     fun snap(on: Boolean, grid: Float, angleDeg: Float, scaleStep: Float) =
         "snap ${if (on) 1 else 0} ${FieldValues.formatFloat(grid)} ${FieldValues.formatFloat(angleDeg)} ${FieldValues.formatFloat(scaleStep)}"
     fun undo() = "undo"
+    fun play() = "play"
+    fun pause() = "pause"
+    fun step() = "step"
+    fun stop() = "stop"
     fun redo() = "redo"
 
     /** One line: newlines and tabs become spaces, surrounding blanks trimmed. */
@@ -104,4 +108,26 @@ class HierarchyMoves(rows: List<TreeRow>, row: TreeRow) {
             EditorCommands.reparent(row.id, p.parent, parentIndex + 1)
         }
     }
+}
+
+/**
+ * What the play controls offer for a [PlayInfo]: the main button plays, pauses or resumes; step
+ * advances one physics step while paused; stop goes back to the scene as it was before play.
+ */
+class PlayControls(private val play: PlayInfo) {
+    /** Main button: pause while playing, play otherwise (resumes when paused). */
+    val primary: String get() = if (play.playing) EditorCommands.pause() else EditorCommands.play()
+    val primaryGlyph: String get() = if (play.playing) "⏸" else "▶"
+    val primaryLabel: String
+        get() = when (play.state) {
+            PlayState.Editing -> "Play"
+            PlayState.Playing -> "Pause"
+            PlayState.Paused -> "Resume"
+        }
+    val canStep: Boolean get() = play.paused
+    val canStop: Boolean get() = play.active
+
+    /** "12.34 s · 741 steps" while playing or paused, empty while editing. */
+    val clock: String
+        get() = if (!play.active) "" else String.format(Locale.ROOT, "%.2f s · %d steps", play.time, play.steps)
 }
