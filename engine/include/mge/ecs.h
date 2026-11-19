@@ -100,6 +100,10 @@ public:
         Archetype* a = archetypes_[r.archetype - 1];
         return static_cast<uint8_t*>(a->columns[c]) + size_t(detail::componentInfo(c).size) * r.row;
     }
+    void removeRaw(Entity e, ComponentId c) {
+        Record& r = record(e);
+        if (archetypes_[r.archetype - 1]->has(c)) moveTo(e, archetypes_[r.archetype - 1]->mask & ~(uint64_t(1) << c));
+    }
     template <class Fn> void eachEntity(Fn&& fn) {
         ++iterating_;
         for (Archetype* a : archetypes_)

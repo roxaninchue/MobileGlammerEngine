@@ -68,6 +68,8 @@ public:
     // parent invalid = detach (becomes a root). Returns false (and changes nothing) on a cycle.
     bool setParent(ecs::World& w, ecs::Entity child, ecs::Entity parent);
     ecs::Entity parentOf(ecs::World& w, ecs::Entity e);
+    // Parent components were written directly (editor, loads): rebuild the child order next update.
+    void markHierarchyDirty() { hierarchyDirty_ = true; }
 
     // Resolve world transforms. Children of destroyed parents are detached and become roots.
     void update(ecs::World& w);
