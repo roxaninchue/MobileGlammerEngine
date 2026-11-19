@@ -29,17 +29,22 @@ constexpr FieldType kLastFieldType = FieldType::Str32;
 uint32_t fieldSize(FieldType t);   // bytes in memory and on disk
 
 // How the editor shows a field (data is unchanged): Angle = radians shown in degrees,
-// Color = packed RGBA8 (R in the low byte), Bool = 0/1 toggle, Hidden = not in the inspector.
-enum class FieldHint : uint8_t { None, Angle, Color, Bool, Hidden };
+// Color = packed RGBA8 (R in the low byte), Bool = 0/1 toggle, Hidden = not in the inspector,
+// Enum = an integer picked by name from `enumNames` ("Static|Kinematic|Dynamic" = 0, 1, 2).
+enum class FieldHint : uint8_t { None, Angle, Color, Bool, Hidden, Enum };
 
 struct Field {
     const char* name;
     FieldType type;
     uint32_t offset;
     FieldHint hint = FieldHint::None;
+    const char* enumNames = nullptr;   // Enum only: '|'-separated names, value = position
 };
 #define MGE_FIELD(T, member, ftype) \
     ::mge::serial::Field{#member, ::mge::serial::FieldType::ftype, uint32_t(offsetof(T, member))}
+#define MGE_FIELD_ENUM(T, member, ftype, names) \
+    ::mge::serial::Field{#member, ::mge::serial::FieldType::ftype, uint32_t(offsetof(T, member)), \
+                         ::mge::serial::FieldHint::Enum, names}
 #define MGE_FIELD_HINT(T, member, ftype, fhint) \
     ::mge::serial::Field{#member, ::mge::serial::FieldType::ftype, uint32_t(offsetof(T, member)), \
                          ::mge::serial::FieldHint::fhint}
@@ -70,6 +75,10 @@ public:
     }
     const Type* find(std::string_view name) const;
     const std::vector<Type>& types() const { return types_; }
+
+    // Optional save order: entities are written sorted by this key (then by ECS index), so a
+    // scene saves the same bytes however its entities were created. The editor sorts by id.
+    uint64_t (*entityOrder)(ecs::World&, ecs::Entity) = nullptr;
 
 private:
     std::vector<Type> types_;

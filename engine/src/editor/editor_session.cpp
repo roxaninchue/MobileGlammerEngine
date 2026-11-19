@@ -54,6 +54,7 @@ const char* hintName(serial::FieldHint h) {
         case serial::FieldHint::Color: return "Color";
         case serial::FieldHint::Bool: return "Bool";
         case serial::FieldHint::Hidden: return "Hidden";
+        case serial::FieldHint::Enum: return "Enum";
         default: return "";
     }
 }
@@ -101,6 +102,7 @@ void line(render::SpriteBatcher& b, vec2 a, vec2 c, float width, uint32_t color,
 EditorSession::EditorSession() {
     serial::registerScene2D(reg_);
     render::registerRender2D(reg_);
+    physics2d::registerPhysics2D(reg_);
     registerEditor(reg_);
     rebuild();
 }
@@ -109,6 +111,7 @@ EditorSession::~EditorSession() = default;
 
 void EditorSession::rebuild() {
     const uint64_t rev = world_ ? revision() + 1 : 0;
+    if (world_ && play_.active()) play_.stop(*this);
     inspector_.reset();
     hierarchy_.reset();
     stack_.reset();
@@ -138,15 +141,27 @@ void EditorSession::buildStarter() {
         std::snprintf(buf, sizeof buf, "%g %g", double(size.x), double(size.y));
         inspector_->setField(u, "SpriteRenderer", "size", buf);
     };
+    // Press play: the crates fall and tumble onto the ground (Collider2D on each).
+    auto body = [&](Uid u, const char* type, const char* size) {
+        inspector_->addComponent(u, "Collider2D");
+        inspector_->setField(u, "Collider2D", "bodyType", type);
+        inspector_->setField(u, "Collider2D", "size", size);
+    };
     Uid ground = hierarchy_->create("Ground", kNoUid, {0, -3.5f});
     tint(ground, "#3A4A5CFF", {14, 1});
+    body(ground, "Static", "14 1");
     Uid player = hierarchy_->create("Player", kNoUid, {-3, -2.5f});
     tint(player, "#4FC3F7FF", {1, 1});
+    body(player, "Dynamic", "1 1");
+    inspector_->setField(player, "Collider2D", "fixedRotation", "true");
     Uid hat = hierarchy_->create("Hat", player, {0, 0.7f});
     tint(hat, "#FFB74DFF", {0.8f, 0.3f});
-    Uid crate = hierarchy_->create("Crate", kNoUid, {2, -2.5f});
+    Uid crate = hierarchy_->create("Crate", kNoUid, {1.5f, 0.5f});
     tint(crate, "#A1887FFF", {1, 1});
-    hierarchy_->duplicate({crate});
+    body(crate, "Dynamic", "1 1");
+    inspector_->setField(crate, "Transform2D", "rotation", "20");
+    std::vector<Uid> copy = hierarchy_->duplicate({crate});
+    if (!copy.empty()) inspector_->setField(copy[0], "Transform2D", "position", "2 2.5");
     stack_->clear();   // the starter scene is the starting point, not history
     stack_->markSaved();
     selection_.clear();
@@ -175,6 +190,17 @@ Uid EditorSession::pick(vec2 p) {
         }
     });
     return best;
+}
+
+bool EditorSession::tick(float dt) {
+    if (!play_.update(*this, dt)) return false;
+    // Panels show live values while playing, refreshed four times a second (not every frame).
+    const int quarter = int(play_.time() * 4.0f);
+    if (quarter != playTick_) {
+        playTick_ = quarter;
+        ++selRev_;
+    }
+    return true;
 }
 
 void EditorSession::update() {
@@ -225,6 +251,12 @@ bool EditorSession::handle(std::string_view line) {
     const std::string_view cmd = token(s);
     Uid id = kNoUid, other = kNoUid;
     long long n = 0;
+    if (cmd == "play" || cmd == "pause" || cmd == "step" || cmd == "stop") {
+        bool ok = cmd == "play" ? play_.play(*this) : cmd == "pause" ? play_.pause()
+                : cmd == "step" ? play_.step(*this) : play_.stop(*this);
+        if (ok) { ++selRev_; playTick_ = -1; }
+        return ok;
+    }
     if (cmd == "undo") return stack_->undo();
     if (cmd == "redo") return stack_->redo();
     if (cmd == "seal") { stack_->seal(); return true; }
@@ -343,6 +375,13 @@ std::string EditorSession::stateJson() {
                       double(gizmo_.snap.grid), double(gizmo_.snap.angleDeg), double(gizmo_.snap.scaleStep));
         o += buf;
     }
+    {
+        const char* states[] = {"editing", "playing", "paused"};
+        char buf[128];
+        std::snprintf(buf, sizeof buf, ",\"play\":{\"state\":\"%s\",\"time\":%.2f,\"steps\":%u}",
+                      states[int(play_.state())], double(play_.time()), play_.steps());
+        o += buf;
+    }
     o += ",\"rows\":[";
     bool first = true;
     for (const TreeRow& r : hierarchy_->rows(selection_)) {
@@ -387,6 +426,14 @@ std::string EditorSession::stateJson() {
                 o += hintName(f.hint);
                 o += "\",\"value\":";
                 appendJsonString(o, f.value);
+                if (!f.options.empty()) {
+                    o += ",\"options\":[";
+                    for (size_t k = 0; k < f.options.size(); ++k) {
+                        if (k) o += ',';
+                        appendJsonString(o, f.options[k]);
+                    }
+                    o += ']';
+                }
                 o += '}';
             }
             o += "]}";

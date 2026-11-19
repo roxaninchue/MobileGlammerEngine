@@ -13,6 +13,11 @@ void registerEditor(Registry& reg) {
     if (!reg.find("EditorId")) reg.add<EditorId>("EditorId", {MGE_FIELD(EditorId, uid, U32)}).editorHidden = true;
     if (!reg.find("SiblingOrder"))
         reg.add<SiblingOrder>("SiblingOrder", {MGE_FIELD(SiblingOrder, index, I32)}).editorHidden = true;
+    // Saved scenes list entities by editor id: stable files however the ECS reused its slots.
+    reg.entityOrder = [](ecs::World& w, Entity e) -> uint64_t {
+        const EditorId* id = w.get<EditorId>(e);
+        return id ? id->uid : UINT64_MAX;
+    };
 }
 
 size_t SubtreeSnapshot::bytes() const {

@@ -5,6 +5,7 @@
 //   F32 "1.5"   I32/I16 "-3"   U32/U16 "7"   Vec2 "1.5 2"   Vec4 "0 0 1 1"
 //   Angle hint: degrees "90"   Color hint: "#RRGGBBAA"   Bool hint: "true"/"false"
 //   Str32: the text itself     Entity: editor id ("0" = none)
+//   Enum hint: the option name ("Dynamic"); its index is accepted too
 // Every write is a SetComponentCommand. Pass a non-zero `scrub` id while a value is being
 // dragged: those writes merge into one undo step until the stack is sealed.
 // Pure CPU code in mge_core, covered by host tests.
@@ -20,7 +21,11 @@ struct InspectorField {
     serial::FieldType type;
     serial::FieldHint hint;
     std::string value;
+    std::vector<std::string> options;   // Enum hint only
 };
+
+// Names of an Enum field, in value order (empty for other fields).
+std::vector<std::string> enumOptions(const serial::Field& f);
 
 struct InspectorComponent {
     std::string type;

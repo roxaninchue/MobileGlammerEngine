@@ -240,7 +240,8 @@ void EngineHost::editorLoop(const char* backendName) {
     for (;;) {
         // Render on demand: block until input, a command, a surface change or an animation.
         FrameState fs;
-        if (!nextFrame(redraw || viewport.touching(), fs)) break;
+        // Play mode (M2 #24) runs at full rate; editing renders on demand.
+        if (!nextFrame(redraw || viewport.touching() || session.play().playing(), fs)) break;
         if (fs.densityChanged) {
             gestureCfg.density = fs.density;
             viewport.setGestureConfig(gestureCfg);
@@ -269,6 +270,7 @@ void EngineHost::editorLoop(const char* backendName) {
                            std::chrono::duration_cast<std::chrono::nanoseconds>(t0.time_since_epoch()).count(), dt, vw, vh,
                            fs.insets);
         }
+        const bool simulated = session.tick(dt);
         session.update();
 
         // Publish the panel state when it changed (the UI polls editorState).
@@ -281,7 +283,7 @@ void EngineHost::editorLoop(const char* backendName) {
         }
 
         if (renderer_ && attached_ &&
-            (redraw || hadCommands || viewport.needsRedraw() || session.revision() != drawnRev)) {
+            (redraw || hadCommands || simulated || viewport.needsRedraw() || session.revision() != drawnRev)) {
             const render::ScreenLayout& layout = viewport.layout();
             batcher.begin(layout.camera);
             session.draw(batcher, layout);
@@ -299,8 +301,9 @@ void EngineHost::editorLoop(const char* backendName) {
         if (renderer_ && t0 - lastStats >= std::chrono::milliseconds(500)) {
             const render::RenderStats rs = renderer_->lastFrameStats();
             char text[256];
-            std::snprintf(text, sizeof text, "%s editor  entities %u  draws %u  sprites %u  frames drawn %u",
-                          backendName, session.world().aliveCount(), rs.drawCalls, rs.sprites, frames);
+            const char* mode = session.play().playing() ? "playing" : session.play().active() ? "paused" : "editor";
+            std::snprintf(text, sizeof text, "%s %s  entities %u  draws %u  sprites %u  frames drawn %u", backendName,
+                          mode, session.world().aliveCount(), rs.drawCalls, rs.sprites, frames);
             std::lock_guard lock(statsMutex_);
             statsText_ = text;
             lastStats = t0;

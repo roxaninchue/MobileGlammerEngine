@@ -34,7 +34,7 @@ TEST(editor_session_starter_and_state) {
     js = s.stateJson();
     CHECK(has(js, "\"n\":\"Hat\"") && has(js, "\"name\":\"Hat\""));   // selecting expanded its parent
     CHECK(has(js, "{\"name\":\"rotation\",\"type\":\"F32\",\"hint\":\"Angle\",\"value\":\"0\"}"));
-    CHECK(has(js, "\"addable\":[]"));
+    CHECK(has(js, "\"addable\":[\"Collider2D\"]"));
     s.newScene(false);
     CHECK(s.world().aliveCount() == 0 && s.revision() > rev);
 }
@@ -63,7 +63,7 @@ TEST(editor_session_protocol) {
     CHECK(s.world().get<scene2d::Transform2D>(s.doc().entity(gun))->rotation == 0);
     CHECK(s.handle("redo"));
     CHECK(s.handle("remove " + std::to_string(gun) + " SpriteRenderer"));
-    CHECK(has(s.stateJson(), "\"addable\":[\"SpriteRenderer\"]") || s.selection().primary() != gun);
+    CHECK(has(s.stateJson(), "\"addable\":[\"SpriteRenderer\",\"Collider2D\"]"));
     CHECK(s.handle("add " + std::to_string(gun) + " SpriteRenderer"));
     CHECK(s.handle("select " + std::to_string(hero)) && s.handle("duplicate"));
     CHECK(s.world().aliveCount() == 3 && s.selection().primary() != hero);

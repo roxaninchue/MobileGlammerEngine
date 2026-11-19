@@ -1,6 +1,7 @@
 #include "mge/editor/inspector.h"
 #include <cmath>
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include "mge/transform2d.h"
 
@@ -57,8 +58,27 @@ uint64_t mix(uint64_t h, uint64_t v) {
 }
 }  // namespace
 
+std::vector<std::string> enumOptions(const Field& f) {
+    std::vector<std::string> out;
+    if (f.hint != FieldHint::Enum || !f.enumNames) return out;
+    std::string_view s = f.enumNames;
+    while (true) {
+        const size_t bar = s.find('|');
+        out.emplace_back(s.substr(0, bar));
+        if (bar == std::string_view::npos) break;
+        s.remove_prefix(bar + 1);
+    }
+    return out;
+}
+
 std::string Inspector::format(const Field& f, const uint8_t* bytes) {
     const uint8_t* src = bytes + f.offset;
+    if (f.hint == FieldHint::Enum && (f.type == FieldType::U32 || f.type == FieldType::I32)) {
+        uint32_t v;
+        std::memcpy(&v, src, 4);
+        const std::vector<std::string> names = enumOptions(f);
+        if (v < names.size()) return names[v];
+    }
     switch (f.type) {
         case FieldType::F32: {
             float v; std::memcpy(&v, src, 4);
@@ -107,6 +127,21 @@ bool Inspector::parse(const Field& f, std::string_view text, uint8_t* bytes) {
     uint8_t* dst = bytes + f.offset;
     const bool boolText = text == "true" || text == "false";
     if (f.hint == FieldHint::Bool && boolText) text = text == "true" ? "1" : "0";
+    std::string enumIndex;
+    if (f.hint == FieldHint::Enum) {
+        const std::vector<std::string> names = enumOptions(f);
+        for (size_t k = 0; k < names.size(); ++k) {
+            bool eq = names[k].size() == text.size();
+            for (size_t c = 0; eq && c < text.size(); ++c)
+                eq = std::tolower(static_cast<unsigned char>(names[k][c])) == std::tolower(static_cast<unsigned char>(text[c]));
+            if (eq) { enumIndex = std::to_string(k); break; }
+        }
+        if (!enumIndex.empty()) text = enumIndex;
+        else {   // a raw index must still name an option
+            long long idx = 0;
+            if (!parseInt(text, 0, (long long)names.size() - 1, idx)) return false;
+        }
+    }
     long long i = 0;
     switch (f.type) {
         case FieldType::F32: {
@@ -184,7 +219,7 @@ std::vector<InspectorComponent> Inspector::inspect(Uid uid) const {
         c.removable = t.name != "Transform2D";
         for (const Field& f : t.fields) {
             if (f.hint == FieldHint::Hidden) continue;
-            c.fields.push_back({f.name, f.type, f.hint, format(f, bytes.data())});
+            c.fields.push_back({f.name, f.type, f.hint, format(f, bytes.data()), enumOptions(f)});
         }
         out.push_back(std::move(c));
     }

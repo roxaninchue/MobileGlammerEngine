@@ -17,10 +17,20 @@ namespace {
 // On disk an entity reference is a 4-byte slot; every other type is stored as in memory.
 uint32_t diskSize(FieldType t) { return t == FieldType::Entity ? 4 : fieldSize(t); }
 
-std::vector<Entity> collect(World& w) {
+std::vector<Entity> collect(World& w, const Registry& reg) {
     std::vector<Entity> v;
     v.reserve(w.aliveCount());
     w.eachEntity([&](Entity e) { v.push_back(e); });
+    if (reg.entityOrder) {
+        std::vector<std::pair<uint64_t, Entity>> keyed;
+        keyed.reserve(v.size());
+        for (Entity e : v) keyed.push_back({reg.entityOrder(w, e), e});
+        std::sort(keyed.begin(), keyed.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first < b.first : a.second.index < b.second.index;
+        });
+        for (size_t i = 0; i < v.size(); ++i) v[i] = keyed[i].second;
+        return v;
+    }
     std::sort(v.begin(), v.end(), [](Entity a, Entity b) { return a.index < b.index; });   // deterministic
     return v;
 }
@@ -280,7 +290,7 @@ std::vector<uint8_t> saveBinary(World& world, const Registry& reg) {
         w.u16(uint16_t(t.fields.size()));
         for (const auto& f : t.fields) { w.str(f.name); w.u8(uint8_t(f.type)); }
     }
-    auto ents = collect(world);
+    auto ents = collect(world, reg);
     Remap remap(ents);
     w.u32(uint32_t(ents.size()));
     for (Entity e : ents) {
@@ -378,7 +388,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
 
 // ------------------------------------------------------------------ JSON save/load
 std::string saveJson(World& world, const Registry& reg) {
-    auto ents = collect(world);
+    auto ents = collect(world, reg);
     Remap remap(ents);
     std::string out = "{\"version\":" + std::to_string(kFormatVersion) + ",\"entities\":[";
     for (uint32_t i = 0; i < ents.size(); ++i) {

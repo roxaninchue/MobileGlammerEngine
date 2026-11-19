@@ -11,6 +11,7 @@
 //        seal                   add <id> <Type>       remove <id> <Type>    undo     redo
 //        gizmo <move|rotate|scale>                    space <world|local>
 //        snap <0|1> [grid] [angleDeg] [scaleStep]
+//        play                   pause                 step                  stop
 //    Parent 0 means the scene root. Returns false for unknown or rejected commands.
 //  - stateJson(): what the panels show (tree rows, inspector of the primary selection,
 //    undo/redo labels, dirty flag), stamped with revision() so the UI re-reads only on change.
@@ -22,6 +23,7 @@
 #include "mge/editor/gizmo.h"
 #include "mge/editor/hierarchy.h"
 #include "mge/editor/inspector.h"
+#include "mge/editor/play_session.h"
 #include "mge/render/sprite_batch.h"
 #include "mge/render/sprite_system.h"
 #include "mge/serialize.h"
@@ -45,6 +47,8 @@ public:
     Uid pick(vec2 world);
     void select(Uid uid, bool toggle = false);
 
+    // Advances play mode by `dt` (no-op while editing); true when the scene changed.
+    bool tick(float dt);
     // Resolves world transforms; call once per frame before draw().
     void update();
     // Scene sprites, plus the editor overlay (grid, selection outlines, gizmo) sized for the
@@ -60,6 +64,7 @@ public:
     Inspector& inspector() { return *inspector_; }
     Selection& selection() { return selection_; }
     Gizmo& gizmo() { return gizmo_; }
+    PlaySession& play() { return play_; }
 
     // Grid spacing in world units for the overlay (and snapping, later).
     float gridStep = 1.0f;
@@ -77,6 +82,8 @@ private:
     std::unique_ptr<Inspector> inspector_;
     Selection selection_;
     Gizmo gizmo_;
+    PlaySession play_;
+    int playTick_ = -1;   // last quarter second of play time the UI was told about
     uint64_t selRev_ = 0;   // selection changes; rebuild() seeds it so revision() keeps increasing
 };
 
