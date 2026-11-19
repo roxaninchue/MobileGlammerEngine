@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.glammer.mge.editor.EditorOverlay
+import com.glammer.mge.editor.EditorState
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -69,13 +71,31 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-                // Editor chrome will live in Compose on top of the viewport
-                Text(
-                    "MobileGlammerEngine M1 - tap: drop, hold: blast, drag/pinch: camera",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
-                )
+                // Editor chrome (M2): panels over the viewport. The engine publishes its state;
+                // the UI re-reads it only when the revision moves (cheap to poll at 30 Hz).
+                var editor by remember { mutableStateOf(EditorState()) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        NativeEngine.editorState(editor.revision)?.let { json ->
+                            runCatching { EditorState.parse(json) }.onSuccess { editor = it }
+                        }
+                        delay(33)
+                    }
+                }
+                if (editor.revision >= 0) {
+                    EditorOverlay(
+                        state = editor,
+                        send = NativeEngine::editorCommand,
+                        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(bottom = 48.dp)
+                    )
+                } else {
+                    Text(
+                        "MobileGlammerEngine - tap: drop, hold: blast, drag/pinch: camera",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
+                    )
+                }
                 // Live engine stats (frame time, draw calls, bodies, memory), polled twice a second.
                 var stats by remember { mutableStateOf("") }
                 LaunchedEffect(Unit) {

@@ -75,3 +75,29 @@ object FieldValues {
         else (((v and 0xFF) shl 24) or (v ushr 8)).toInt()
     }
 }
+
+/**
+ * Hierarchy menu moves for [row], as protocol lines (null = not possible). Siblings are read
+ * from the visible rows: an entity's siblings are always all visible together.
+ */
+class HierarchyMoves(rows: List<TreeRow>, row: TreeRow) {
+    val up: String?
+    val down: String?
+    /** Into the previous sibling, as its last child. */
+    val indent: String?
+    /** Out of the parent, right after it. */
+    val outdent: String?
+
+    init {
+        val siblings = rows.filter { it.parent == row.parent }
+        val i = siblings.indexOfFirst { it.id == row.id }
+        up = if (i > 0) EditorCommands.reorder(row.id, i - 1) else null
+        down = if (i >= 0 && i < siblings.size - 1) EditorCommands.reorder(row.id, i + 1) else null
+        indent = if (i > 0) EditorCommands.reparent(row.id, siblings[i - 1].id, -1) else null
+        val parentRow = rows.firstOrNull { it.id == row.parent }
+        outdent = parentRow?.let { p ->
+            val parentIndex = rows.filter { it.parent == p.parent }.indexOfFirst { it.id == p.id }
+            EditorCommands.reparent(row.id, p.parent, parentIndex + 1)
+        }
+    }
+}

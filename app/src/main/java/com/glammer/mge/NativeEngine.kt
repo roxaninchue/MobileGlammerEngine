@@ -21,6 +21,10 @@ object NativeEngine {
      * actionIndex changed. xy holds count (x, y) pairs in surface pixels; time is uptimeMillis.
      */
     external fun touch(action: Int, actionIndex: Int, count: Int, ids: IntArray, xy: FloatArray, timeMs: Long)
+    /** Editor protocol line (see engine/include/mge/editor/editor_session.h), applied next frame. */
+    external fun editorCommand(line: String)
+    /** Editor panel state JSON, or null while its revision is still [sinceRevision]. */
+    external fun editorState(sinceRevision: Long): String?
     /** Latest engine stats (fps, frame time, draws, bodies, memory) as a few short lines. */
     external fun stats(): String
     external fun pause()

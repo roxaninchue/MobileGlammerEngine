@@ -53,3 +53,31 @@ class EditorCommandsTest {
         assertNull(FieldValues.colorArgb("#GG0000"))
     }
 }
+
+class HierarchyMovesTest {
+    private fun row(id: Int, parent: Int, depth: Int) = TreeRow(id, parent, depth, 0, true, false, "e$id")
+
+    // 1, 2 (children 4, 5), 3
+    private val rows = listOf(row(1, 0, 0), row(2, 0, 0), row(4, 2, 1), row(5, 2, 1), row(3, 0, 0))
+
+    @Test
+    fun firstRoot() {
+        val m = HierarchyMoves(rows, rows[0])
+        assertNull(m.up)
+        assertEquals("reorder 1 1", m.down)
+        assertNull(m.indent)
+        assertNull(m.outdent)
+    }
+
+    @Test
+    fun middleRootAndChildren() {
+        val m = HierarchyMoves(rows, rows[1])
+        assertEquals("reorder 2 0", m.up)
+        assertEquals("reparent 2 1 -1", m.indent)
+        val child = HierarchyMoves(rows, rows[3])   // 5, second child of 2
+        assertEquals("reorder 5 0", child.up)
+        assertNull(child.down)
+        assertEquals("reparent 5 4 -1", child.indent)
+        assertEquals("reparent 5 0 2", child.outdent)   // right after 2 among the roots
+    }
+}
