@@ -2,6 +2,16 @@
 
 namespace mge::render {
 
+void registerRender2D(serial::Registry& reg) {
+    if (reg.find("SpriteRenderer")) return;
+    reg.add<SpriteRenderer>("SpriteRenderer", {MGE_FIELD(SpriteRenderer, size, Vec2),
+                                               MGE_FIELD(SpriteRenderer, pivot, Vec2),
+                                               MGE_FIELD(SpriteRenderer, uvRect, Vec4),
+                                               MGE_FIELD_HINT(SpriteRenderer, color, U32, Color),
+                                               MGE_FIELD(SpriteRenderer, layer, I16),
+                                               MGE_FIELD_HINT(SpriteRenderer, visible, U16, Bool)});
+}
+
 uint32_t submitSprites(ecs::World& world, SpriteBatcher& batcher) {
     uint32_t n = 0;
     world.eachChunk<scene2d::WorldTransform2D, SpriteRenderer>(

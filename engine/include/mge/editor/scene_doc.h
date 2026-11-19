@@ -26,7 +26,13 @@ struct EditorId {
     Uid uid = kNoUid;
 };
 
-// Adds EditorId to the registry so ids survive save/load (call once per registry).
+// Position among siblings in the hierarchy (0 first). Ties fall back to id order.
+struct SiblingOrder {
+    int32_t index = 0;
+};
+
+// Adds EditorId and SiblingOrder (both hidden from the inspector) to the registry so ids and
+// hierarchy order survive save/load. Safe to call more than once.
 void registerEditor(serial::Registry& reg);
 
 struct ComponentBlob {
@@ -64,7 +70,7 @@ public:
     Uid uidOf(ecs::Entity e);            // kNoUid when the entity has no EditorId
     Uid nextUid() const { return next_; }
 
-    // Children (direct) of `uid`, or the roots when uid == kNoUid, in creation order of their ids.
+    // Children (direct) of `uid`, or the roots when uid == kNoUid, in sibling order.
     std::vector<Uid> children(Uid uid);
     // `uid` and all its descendants, parents first.
     std::vector<Uid> subtree(Uid uid);

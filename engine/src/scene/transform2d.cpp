@@ -7,6 +7,16 @@ namespace mge::scene2d {
 using ecs::Entity;
 using ecs::World;
 
+Name Name::of(std::string_view s) {
+    Name n;
+    size_t len = s.size() < sizeof n.text - 1 ? s.size() : sizeof n.text - 1;
+    // Back off to a UTF-8 lead byte if the cut lands inside a multi-byte sequence.
+    if (len < s.size())
+        while (len > 0 && (static_cast<unsigned char>(s[len]) & 0xC0) == 0x80) --len;
+    std::memcpy(n.text, s.data(), len);
+    return n;
+}
+
 void TransformSystem2D::attach(World& w, Entity e, vec2 pos, float rot, vec2 scale) {
     Transform2D t;
     t.position = pos; t.rotation = rot; t.scale = scale; t.dirty = 1;

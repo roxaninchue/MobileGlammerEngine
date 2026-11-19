@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "mge/ecs.h"
 #include "mge/render/sprite_batch.h"
+#include "mge/serialize.h"
 #include "mge/transform2d.h"
 
 namespace mge::render {
@@ -18,6 +19,10 @@ struct SpriteRenderer {
     int16_t layer = 0;
     uint16_t visible = 1;
 };
+
+// Registers SpriteRenderer for scenes and the editor (M2 #22). The texture id is a renderer
+// handle, so it is not saved: loaded sprites draw with the white texture, tinted by `color`.
+void registerRender2D(serial::Registry& reg);
 
 // Returns the number of sprites submitted (before culling).
 uint32_t submitSprites(ecs::World& world, SpriteBatcher& batcher);

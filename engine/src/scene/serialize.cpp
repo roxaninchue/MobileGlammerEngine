@@ -13,7 +13,9 @@ using ecs::World;
 
 namespace {
 
-uint32_t diskSize(FieldType t) { return t == FieldType::Vec2 ? 8 : 4; }
+
+// On disk an entity reference is a 4-byte slot; every other type is stored as in memory.
+uint32_t diskSize(FieldType t) { return t == FieldType::Entity ? 4 : fieldSize(t); }
 
 std::vector<Entity> collect(World& w) {
     std::vector<Entity> v;
@@ -124,7 +126,31 @@ struct Parser {
                 case 'n': out += '\n'; break;
                 case 't': out += '\t'; break;
                 case 'r': out += '\r'; break;
-                case 'u': if (e - p < 4) return false; p += 4; out += '?'; break;
+                case 'b': out += '\b'; break;
+                case 'f': out += '\f'; break;
+                case 'u': {
+                    // \uXXXX -> UTF-8 (BMP; surrogate halves become U+FFFD).
+                    if (e - p < 4) return false;
+                    unsigned cp = 0;
+                    for (int i = 0; i < 4; ++i) {
+                        char h = p[i];
+                        unsigned d = h >= '0' && h <= '9' ? unsigned(h - '0')
+                                   : h >= 'a' && h <= 'f' ? unsigned(h - 'a' + 10)
+                                   : h >= 'A' && h <= 'F' ? unsigned(h - 'A' + 10) : 16u;
+                        if (d > 15) return false;
+                        cp = cp * 16 + d;
+                    }
+                    p += 4;
+                    if (cp >= 0xD800 && cp <= 0xDFFF) cp = 0xFFFD;
+                    if (cp < 0x80) out += char(cp);
+                    else if (cp < 0x800) { out += char(0xC0 | (cp >> 6)); out += char(0x80 | (cp & 0x3F)); }
+                    else {
+                        out += char(0xE0 | (cp >> 12));
+                        out += char(0x80 | ((cp >> 6) & 0x3F));
+                        out += char(0x80 | (cp & 0x3F));
+                    }
+                    break;
+                }
                 default: out += x;
             }
         }
@@ -183,6 +209,28 @@ struct Parser {
     }
 };
 
+void appendStr(std::string& out, std::string_view v) {
+    out += '"';
+    for (char c : v) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\t': out += "\\t"; break;
+            case '\r': out += "\\r"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04x", unsigned(static_cast<unsigned char>(c)));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    out += '"';
+}
+
 void appendNum(std::string& out, double v) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "%.9g", v);
@@ -190,6 +238,16 @@ void appendNum(std::string& out, double v) {
 }
 
 }  // namespace
+
+uint32_t fieldSize(FieldType t) {
+    switch (t) {
+        case FieldType::Vec2: case FieldType::Entity: return 8;
+        case FieldType::Vec4: return 16;
+        case FieldType::I16: case FieldType::U16: return 2;
+        case FieldType::Str32: return 32;
+        default: return 4;
+    }
+}
 
 const Registry::Type* Registry::find(std::string_view name) const {
     for (const auto& t : types_) if (t.name == name) return &t;
@@ -199,13 +257,14 @@ const Registry::Type* Registry::find(std::string_view name) const {
 void registerScene2D(Registry& reg) {
     using namespace scene2d;
     auto& t = reg.add<Transform2D>("Transform2D", {MGE_FIELD(Transform2D, position, Vec2),
-                                                    MGE_FIELD(Transform2D, rotation, F32),
+                                                    MGE_FIELD_HINT(Transform2D, rotation, F32, Angle),
                                                     MGE_FIELD(Transform2D, scale, Vec2)});
     t.onAdd = [](World& w, Entity e) {
         if (!w.has<WorldTransform2D>(e)) w.add<WorldTransform2D>(e);
         w.get<Transform2D>(e)->dirty = 1;
     };
     reg.add<Parent>("Parent", {MGE_FIELD(Parent, entity, Entity)});
+    reg.add<Name>("Name", {MGE_FIELD(Name, text, Str32)});
 }
 
 // ------------------------------------------------------------------ binary save/load
@@ -238,7 +297,7 @@ std::vector<uint8_t> saveBinary(World& world, const Registry& reg) {
                     std::memcpy(&ref, p + f.offset, sizeof ref);
                     w.u32(remap(world, ref));
                 } else {
-                    w.put(p + f.offset, diskSize(f.type));
+                    w.put(p + f.offset, fieldSize(f.type));
                 }
             }
         }
@@ -251,7 +310,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
     char magic[4] = {};
     if (!r.get(magic, 4) || std::memcmp(magic, "MGES", 4) != 0) { MGE_LOGE("scene: not an MGE binary scene"); return false; }
     uint32_t version = r.u32();
-    if (!r.ok || version != kFormatVersion) { MGE_LOGE("scene: unsupported version %u", version); return false; }
+    if (!r.ok || version < kMinFormatVersion || version > kFormatVersion) { MGE_LOGE("scene: unsupported version %u", version); return false; }
 
     struct SField { FieldType type; const Field* dst; };
     struct SType { const Registry::Type* dst; std::vector<SField> fields; };
@@ -266,7 +325,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
         for (uint16_t i = 0; i < fc && r.ok; ++i) {
             std::string fname = r.str();
             uint8_t ft = r.u8();
-            if (ft > uint8_t(FieldType::Entity)) { r.ok = false; break; }
+            if (ft > uint8_t(kLastFieldType)) { r.ok = false; break; }
             const Field* df = nullptr;
             if (st.dst)
                 for (const auto& f : st.dst->fields)
@@ -294,7 +353,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
                 std::memcpy(dst, st.dst->defaults.data(), st.dst->size);
             }
             for (const auto& sf : st.fields) {
-                uint8_t buf[8];
+                uint8_t buf[32];
                 uint32_t bytes = diskSize(sf.type);
                 if (!r.get(buf, bytes)) return rollback(world, made);
                 if (!dst || !sf.dst) continue;
@@ -304,6 +363,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
                     Entity ref = slot < entityCount ? made[slot] : Entity{};
                     std::memcpy(dst + sf.dst->offset, &ref, sizeof ref);
                 } else {
+                    if (sf.type == FieldType::Str32) buf[31] = 0;   // never trust the terminator on disk
                     std::memcpy(dst + sf.dst->offset, buf, bytes);
                 }
             }
@@ -319,7 +379,7 @@ bool loadBinary(World& world, const Registry& reg, const uint8_t* data, size_t s
 std::string saveJson(World& world, const Registry& reg) {
     auto ents = collect(world);
     Remap remap(ents);
-    std::string out = "{\"version\":1,\"entities\":[";
+    std::string out = "{\"version\":" + std::to_string(kFormatVersion) + ",\"entities\":[";
     for (uint32_t i = 0; i < ents.size(); ++i) {
         out += i ? ",\n  {" : "\n  {";
         out += "\"id\":" + std::to_string(i);
@@ -345,6 +405,20 @@ std::string saveJson(World& world, const Registry& reg) {
                         Entity ref; std::memcpy(&ref, src, sizeof ref);
                         uint32_t slot = remap(world, ref);
                         out += slot == UINT32_MAX ? "null" : std::to_string(slot);
+                        break;
+                    }
+                    case FieldType::Vec4: {
+                        float v[4]; std::memcpy(v, src, 16);
+                        out += "[";
+                        for (int k = 0; k < 4; ++k) { if (k) out += ","; appendNum(out, v[k]); }
+                        out += "]";
+                        break;
+                    }
+                    case FieldType::I16: { int16_t v; std::memcpy(&v, src, 2); out += std::to_string(v); break; }
+                    case FieldType::U16: { uint16_t v; std::memcpy(&v, src, 2); out += std::to_string(v); break; }
+                    case FieldType::Str32: {
+                        const char* c = reinterpret_cast<const char*>(src);
+                        appendStr(out, std::string_view(c, ::strnlen(c, 32)));
                         break;
                     }
                 }
@@ -422,6 +496,30 @@ bool loadJson(World& world, const Registry& reg, std::string_view json, std::vec
                             return rollback(world, made);
                         }
                         std::memcpy(out, &ref, sizeof ref);
+                        break;
+                    }
+                    case FieldType::Vec4: {
+                        if (fv.k != JVal::Arr || fv.a.size() != 4) return rollback(world, made);
+                        float v[4];
+                        for (int k = 0; k < 4; ++k) {
+                            if (fv.a[k].k != JVal::Num) return rollback(world, made);
+                            v[k] = float(fv.a[k].n);
+                        }
+                        std::memcpy(out, v, 16);
+                        break;
+                    }
+                    case FieldType::I16: {
+                        if (fv.k != JVal::Num || fv.n < -32768 || fv.n > 32767) return rollback(world, made);
+                        int16_t v = int16_t(fv.n); std::memcpy(out, &v, 2); break;
+                    }
+                    case FieldType::U16: {
+                        if (fv.k != JVal::Num || fv.n < 0 || fv.n > 65535) return rollback(world, made);
+                        uint16_t v = uint16_t(fv.n); std::memcpy(out, &v, 2); break;
+                    }
+                    case FieldType::Str32: {
+                        if (fv.k != JVal::Str) return rollback(world, made);
+                        scene2d::Name n = scene2d::Name::of(fv.s);
+                        std::memcpy(out, n.text, 32);
                         break;
                     }
                 }

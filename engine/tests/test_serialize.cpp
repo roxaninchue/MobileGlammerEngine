@@ -2,6 +2,7 @@
 #include "mge/serialize.h"
 #include "mge/transform2d.h"
 #include <cmath>
+#include <cstring>
 using namespace mge;
 using namespace mge::scene2d;
 using ecs::Entity;
@@ -121,4 +122,84 @@ TEST(serialize_rejects_corrupt) {
     CHECK(!serial::loadJson(b, reg, R"({"entities":[{"Transform2D":{"position":"oops"}}]})"));
     CHECK(!serial::loadJson(b, reg, R"({"entities":[)"));
     CHECK(b.aliveCount() == 0);   // failed loads leave nothing behind
+}
+
+namespace {
+struct Wide { vec4 tint{1, 2, 3, 4}; int16_t layer = -3; uint16_t flags = 7; Name label; };
+}
+
+TEST(serialize_v2_field_types_roundtrip) {
+    serial::Registry reg;
+    serial::registerScene2D(reg);
+    reg.add<Wide>("Wide", {MGE_FIELD(Wide, tint, Vec4), MGE_FIELD(Wide, layer, I16), MGE_FIELD(Wide, flags, U16),
+                           MGE_FIELD(Wide, label, Str32)});
+    ecs::World a;
+    Entity e = a.create();
+    Wide w;
+    w.tint = {0.5f, -1, 2, 8};
+    w.layer = -300;
+    w.flags = 65000;
+    w.label = Name::of("Crate \"A\"\\\n\xC3\xA9");   // quote, backslash, newline, e-acute
+    a.add<Wide>(e, w);
+    a.add<Name>(e, Name::of("Player"));
+
+    for (int pass = 0; pass < 2; ++pass) {
+        ecs::World b;
+        std::vector<Entity> made;
+        if (pass == 0) {
+            auto bin = serial::saveBinary(a, reg);
+            CHECK(serial::loadBinary(b, reg, bin.data(), bin.size(), &made));
+        } else {
+            std::string js = serial::saveJson(a, reg);
+            CHECK(js.find("\"version\":2") != std::string::npos);
+            CHECK(js.find("\"label\":\"Crate \\\"A\\\"\\\\\\n\xC3\xA9\"") != std::string::npos);
+            CHECK(serial::loadJson(b, reg, js, &made));
+        }
+        CHECK(made.size() == 1);
+        const Wide* r = b.get<Wide>(made[0]);
+        CHECK(r && r->tint.x == 0.5f && r->tint.w == 8 && r->layer == -300 && r->flags == 65000);
+        CHECK(r && r->label.view() == w.label.view());
+        CHECK(b.get<Name>(made[0]) && b.get<Name>(made[0])->view() == "Player");
+    }
+}
+
+TEST(serialize_name_limits_and_unicode_escapes) {
+    // 40 bytes of text: cut to 31 without splitting the 2-byte character at the boundary.
+    std::string s(30, 'x');
+    s += "\xC3\xA9tail";
+    Name n = Name::of(s);
+    CHECK(n.view().size() == 30);
+    serial::Registry reg;
+    serial::registerScene2D(reg);
+    ecs::World w;
+    std::vector<Entity> made;
+    CHECK(serial::loadJson(w, reg, R"({"entities":[{"Name":{"text":"caf\u00e9 \u4e2d"}}]})", &made));
+    CHECK(w.get<Name>(made[0])->view() == "caf\xC3\xA9 \xE4\xB8\xAD");
+    CHECK(!serial::loadJson(w, reg, R"({"entities":[{"Name":{"text":5}}]})"));
+    CHECK(!serial::loadJson(w, reg, R"({"entities":[{"Name":{"text":"\u12G4"}}]})"));
+}
+
+TEST(serialize_loads_v1_binary) {
+    // A v1 file (Transform2D only, as M1 wrote it) still loads with v2 code.
+    serial::Registry reg;
+    serial::registerScene2D(reg);
+    std::vector<uint8_t> v1;
+    auto put = [&](const void* p, size_t n) { auto* c = static_cast<const uint8_t*>(p); v1.insert(v1.end(), c, c + n); };
+    auto u16 = [&](uint16_t v) { put(&v, 2); };
+    auto u32 = [&](uint32_t v) { put(&v, 4); };
+    auto str = [&](const char* s) { u16(uint16_t(std::strlen(s))); put(s, std::strlen(s)); };
+    put("MGES", 4); u32(1); u32(1);
+    str("Transform2D"); u16(2);
+    str("position"); v1.push_back(uint8_t(serial::FieldType::Vec2));
+    str("rotation"); v1.push_back(uint8_t(serial::FieldType::F32));
+    u32(1); u16(1); u16(0);
+    float pos[2] = {3, 4}, rot = 0.5f;
+    put(pos, 8); put(&rot, 4);
+    ecs::World w;
+    std::vector<Entity> made;
+    CHECK(serial::loadBinary(w, reg, v1.data(), v1.size(), &made));
+    CHECK(made.size() == 1 && close2(w.get<Transform2D>(made[0])->position, {3, 4}));
+    v1[4] = 3;   // a future version is refused
+    ecs::World w2;
+    CHECK(!serial::loadBinary(w2, reg, v1.data(), v1.size()));
 }

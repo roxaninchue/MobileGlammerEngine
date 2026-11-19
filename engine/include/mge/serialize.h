@@ -19,17 +19,30 @@
 
 namespace mge::serial {
 
-constexpr uint32_t kFormatVersion = 1;
+// v2 (M2 #22) added the Vec4, I16, U16 and Str32 field types; v1 files still load.
+constexpr uint32_t kFormatVersion = 2;
+constexpr uint32_t kMinFormatVersion = 1;
 
-enum class FieldType : uint8_t { F32, I32, U32, Vec2, Entity };
+// Str32: char[32], UTF-8, NUL-terminated (at most 31 bytes of text). JSON: a string.
+enum class FieldType : uint8_t { F32, I32, U32, Vec2, Entity, Vec4, I16, U16, Str32 };
+constexpr FieldType kLastFieldType = FieldType::Str32;
+uint32_t fieldSize(FieldType t);   // bytes in memory and on disk
+
+// How the editor shows a field (data is unchanged): Angle = radians shown in degrees,
+// Color = packed RGBA8 (R in the low byte), Bool = 0/1 toggle, Hidden = not in the inspector.
+enum class FieldHint : uint8_t { None, Angle, Color, Bool, Hidden };
 
 struct Field {
     const char* name;
     FieldType type;
     uint32_t offset;
+    FieldHint hint = FieldHint::None;
 };
 #define MGE_FIELD(T, member, ftype) \
     ::mge::serial::Field{#member, ::mge::serial::FieldType::ftype, uint32_t(offsetof(T, member))}
+#define MGE_FIELD_HINT(T, member, ftype, fhint) \
+    ::mge::serial::Field{#member, ::mge::serial::FieldType::ftype, uint32_t(offsetof(T, member)), \
+                         ::mge::serial::FieldHint::fhint}
 
 class Registry {
 public:
@@ -39,7 +52,8 @@ public:
         uint32_t size;
         std::vector<Field> fields;
         std::vector<uint8_t> defaults;                          // bytes of T{}
-        void (*onAdd)(ecs::World&, ecs::Entity) = nullptr;      // runs after a load adds it
+        void (*onAdd)(ecs::World&, ecs::Entity) = nullptr;      // runs after a load (or editor write) sets it
+        bool editorHidden = false;                              // bookkeeping the inspector does not list
     };
 
     template <class T> Type& add(const char* name, std::initializer_list<Field> fields) {
@@ -61,7 +75,7 @@ private:
     std::vector<Type> types_;
 };
 
-// Transform2D (+ rebuilds WorldTransform2D) and Parent.
+// Transform2D (+ rebuilds WorldTransform2D), Parent, Name.
 void registerScene2D(Registry& reg);
 
 std::vector<uint8_t> saveBinary(ecs::World& world, const Registry& reg);

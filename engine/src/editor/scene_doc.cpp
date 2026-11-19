@@ -10,7 +10,9 @@ using serial::FieldType;
 using serial::Registry;
 
 void registerEditor(Registry& reg) {
-    if (!reg.find("EditorId")) reg.add<EditorId>("EditorId", {MGE_FIELD(EditorId, uid, U32)});
+    if (!reg.find("EditorId")) reg.add<EditorId>("EditorId", {MGE_FIELD(EditorId, uid, U32)}).editorHidden = true;
+    if (!reg.find("SiblingOrder"))
+        reg.add<SiblingOrder>("SiblingOrder", {MGE_FIELD(SiblingOrder, index, I32)}).editorHidden = true;
 }
 
 size_t SubtreeSnapshot::bytes() const {
@@ -76,13 +78,20 @@ bool SceneDoc::isAncestor(Uid ancestor, Uid uid) {
 }
 
 std::vector<Uid> SceneDoc::children(Uid uid) {
-    std::vector<Uid> out;
+    struct Item { int32_t order; Uid uid; };
+    std::vector<Item> items;
     world_.each<EditorId>([&](Entity e, EditorId& id) {
         const Parent* p = world_.get<Parent>(e);
         const Uid parent = p ? uidOf(p->entity) : kNoUid;
-        if (parent == uid && id.uid != uid) out.push_back(id.uid);
+        if (parent != uid || id.uid == uid) return;
+        const SiblingOrder* o = world_.get<SiblingOrder>(e);
+        items.push_back({o ? o->index : 0, id.uid});
     });
-    std::sort(out.begin(), out.end());
+    std::sort(items.begin(), items.end(),
+              [](const Item& a, const Item& b) { return a.order != b.order ? a.order < b.order : a.uid < b.uid; });
+    std::vector<Uid> out;
+    out.reserve(items.size());
+    for (const Item& i : items) out.push_back(i.uid);
     return out;
 }
 

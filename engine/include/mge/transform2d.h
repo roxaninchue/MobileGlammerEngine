@@ -7,6 +7,8 @@
 //    linear pass of flag checks per frame.
 //  - Roots are processed in parallel batches on the job system; children level by level.
 #include <cmath>
+#include <cstring>
+#include <string_view>
 #include <vector>
 #include "mge/ecs.h"
 #include "mge/math.h"
@@ -60,6 +62,14 @@ struct WorldTransform2D {
 };
 
 struct Parent { ecs::Entity entity; };
+
+// Display name (editor hierarchy, lookups by name). UTF-8, NUL-terminated, max 31 bytes.
+struct Name {
+    char text[32] = {};
+    // Copies `s`, cut at 31 bytes without splitting a UTF-8 sequence.
+    static Name of(std::string_view s);
+    std::string_view view() const { return {text, ::strnlen(text, sizeof text)}; }
+};
 
 class TransformSystem2D {
 public:
