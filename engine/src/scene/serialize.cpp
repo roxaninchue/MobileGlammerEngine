@@ -253,6 +253,7 @@ uint32_t fieldSize(FieldType t) {
     switch (t) {
         case FieldType::Vec2: case FieldType::Entity: return 8;
         case FieldType::Vec4: return 16;
+        case FieldType::Vec3: return 12;
         case FieldType::I16: case FieldType::U16: return 2;
         case FieldType::Str32: return 32;
         default: return 4;
@@ -425,6 +426,13 @@ std::string saveJson(World& world, const Registry& reg) {
                         out += "]";
                         break;
                     }
+                    case FieldType::Vec3: {
+                        float v[3]; std::memcpy(v, src, 12);
+                        out += "[";
+                        for (int k = 0; k < 3; ++k) { if (k) out += ","; appendNum(out, v[k]); }
+                        out += "]";
+                        break;
+                    }
                     case FieldType::I16: { int16_t v; std::memcpy(&v, src, 2); out += std::to_string(v); break; }
                     case FieldType::U16: { uint16_t v; std::memcpy(&v, src, 2); out += std::to_string(v); break; }
                     case FieldType::Str32: {
@@ -507,6 +515,16 @@ bool loadJson(World& world, const Registry& reg, std::string_view json, std::vec
                             return rollback(world, made);
                         }
                         std::memcpy(out, &ref, sizeof ref);
+                        break;
+                    }
+                    case FieldType::Vec3: {
+                        if (fv.k != JVal::Arr || fv.a.size() != 3) return rollback(world, made);
+                        float v[3];
+                        for (int k = 0; k < 3; ++k) {
+                            if (fv.a[k].k != JVal::Num) return rollback(world, made);
+                            v[k] = float(fv.a[k].n);
+                        }
+                        std::memcpy(out, v, 12);
                         break;
                     }
                     case FieldType::Vec4: {

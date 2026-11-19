@@ -63,3 +63,17 @@ bool intersect(const Ray& r, const AABB& b, float& tminOut, float maxT) {
 }
 
 }  // namespace mge
+
+namespace mge {
+vec3 toEuler(quat q) {
+    // R = Ry(yaw) * Rx(pitch) * Rz(roll); R(r, c) is m.c[c] component r.
+    const mat3 m = mat3::fromQuat(normalize(q));
+    const float s = -m.c[2].y;   // R(1,2) = -sin(pitch)
+    if (std::fabs(s) < 0.99999f) {
+        return {std::asin(s), std::atan2(m.c[2].x, m.c[2].z), std::atan2(m.c[0].y, m.c[1].y)};
+    }
+    // Gimbal lock: pitch +-90, only yaw +- roll is defined; put it all in yaw.
+    const float pitch = s > 0 ? kPi * 0.5f : -kPi * 0.5f;
+    return {pitch, std::atan2(-m.c[0].z, m.c[0].x), 0.0f};
+}
+}  // namespace mge

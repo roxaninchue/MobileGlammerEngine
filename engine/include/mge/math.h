@@ -173,6 +173,9 @@ struct alignas(16) quat {
     }
 };
 inline float dot(quat a, quat b) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+// Inverse of quat::euler: radians (pitch about X, yaw about Y, roll about Z) such that
+// quat::euler(toEuler(q)) rotates like q. At pitch +-90 degrees roll folds into yaw.
+vec3 toEuler(quat q);   // math.cpp
 inline quat conjugate(quat q) { return {-q.x, -q.y, -q.z, q.w}; }
 inline quat normalize(quat q) {
     float l = std::sqrt(dot(q, q));

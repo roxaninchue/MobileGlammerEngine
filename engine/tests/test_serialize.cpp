@@ -151,7 +151,7 @@ TEST(serialize_v2_field_types_roundtrip) {
             CHECK(serial::loadBinary(b, reg, bin.data(), bin.size(), &made));
         } else {
             std::string js = serial::saveJson(a, reg);
-            CHECK(js.find("\"version\":2") != std::string::npos);
+            CHECK(js.find("\"version\":" + std::to_string(serial::kFormatVersion)) != std::string::npos);
             CHECK(js.find("\"label\":\"Crate \\\"A\\\"\\\\\\n\xC3\xA9\"") != std::string::npos);
             CHECK(serial::loadJson(b, reg, js, &made));
         }
@@ -199,7 +199,7 @@ TEST(serialize_loads_v1_binary) {
     std::vector<Entity> made;
     CHECK(serial::loadBinary(w, reg, v1.data(), v1.size(), &made));
     CHECK(made.size() == 1 && close2(w.get<Transform2D>(made[0])->position, {3, 4}));
-    v1[4] = 3;   // a future version is refused
+    v1[4] = 99;   // a future version is refused
     ecs::World w2;
     CHECK(!serial::loadBinary(w2, reg, v1.data(), v1.size()));
 }

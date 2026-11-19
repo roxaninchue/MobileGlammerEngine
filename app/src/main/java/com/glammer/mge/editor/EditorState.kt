@@ -132,11 +132,13 @@ data class InspectedField(
     /** Enum hint only: option names in value order; the value is one of them. */
     val options: List<String> = emptyList(),
 ) {
-    /** Number of numeric parts the field edits as (Vec2 = 2, Vec4 = 4, scalars = 1, text = 0). */
+    /** Number of numeric parts the field edits as (Vec2 = 2, Vec3 and rotations = 3, Vec4 = 4, scalars = 1, text = 0). */
     val parts: Int
         get() = when {
             hint == FieldHint.Bool || hint == FieldHint.Color || hint == FieldHint.Enum -> 0
+            hint == FieldHint.Rotation -> 3   // quaternion edited as Euler degrees
             type == FieldType.Vec2 -> 2
+            type == FieldType.Vec3 -> 3
             type == FieldType.Vec4 -> 4
             type == FieldType.Str32 || type == FieldType.Unknown -> 0
             else -> 1
@@ -144,7 +146,7 @@ data class InspectedField(
 }
 
 enum class FieldType {
-    F32, I32, U32, Vec2, Entity, Vec4, I16, U16, Str32, Unknown;
+    F32, I32, U32, Vec2, Entity, Vec4, I16, U16, Str32, Vec3, Unknown;
 
     val isInteger get() = this == I32 || this == U32 || this == I16 || this == U16 || this == Entity
 
@@ -154,7 +156,7 @@ enum class FieldType {
 }
 
 enum class FieldHint {
-    None, Angle, Color, Bool, Hidden, Enum;
+    None, Angle, Color, Bool, Hidden, Enum, Rotation;
 
     companion object {
         fun of(s: String) = entries.firstOrNull { it.name == s } ?: None

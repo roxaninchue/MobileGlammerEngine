@@ -45,6 +45,7 @@ const char* typeName(serial::FieldType t) {
         case serial::FieldType::I16: return "I16";
         case serial::FieldType::U16: return "U16";
         case serial::FieldType::Str32: return "Str32";
+        case serial::FieldType::Vec3: return "Vec3";
     }
     return "?";
 }
@@ -55,6 +56,7 @@ const char* hintName(serial::FieldHint h) {
         case serial::FieldHint::Bool: return "Bool";
         case serial::FieldHint::Hidden: return "Hidden";
         case serial::FieldHint::Enum: return "Enum";
+        case serial::FieldHint::Rotation: return "Rotation";
         default: return "";
     }
 }

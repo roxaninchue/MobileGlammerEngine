@@ -349,7 +349,7 @@ private fun Modifier.combinedClickableCompat(onClick: () -> Unit) = this.combine
 @Composable
 private fun FieldRow(id: Int, type: String, f: InspectedField, locked: Boolean, send: (String) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        val label = if (f.hint == FieldHint.Angle) "${f.name}°" else f.name
+        val label = if (f.hint == FieldHint.Angle || f.hint == FieldHint.Rotation) "${f.name}°" else f.name
         if (f.parts == 1) {
             // Drag the label to scrub the value.
             ScrubLabel(label, f, locked) { v, key -> send(EditorCommands.scrub(key, id, type, f.name, v)) }

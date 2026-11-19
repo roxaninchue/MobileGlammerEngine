@@ -107,8 +107,16 @@ std::string Inspector::format(const Field& f, const uint8_t* bytes) {
             return std::to_string(v);
         }
         case FieldType::Vec2: { float v[2]; std::memcpy(v, src, 8); return fmtFloat(v[0]) + " " + fmtFloat(v[1]); }
+        case FieldType::Vec3: {
+            float v[3]; std::memcpy(v, src, 12);
+            return fmtFloat(v[0]) + " " + fmtFloat(v[1]) + " " + fmtFloat(v[2]);
+        }
         case FieldType::Vec4: {
             float v[4]; std::memcpy(v, src, 16);
+            if (f.hint == FieldHint::Rotation) {   // quaternion -> Euler degrees
+                const vec3 e = toEuler(quat{v[0], v[1], v[2], v[3]});
+                return fmtFloat(degrees(e.x)) + " " + fmtFloat(degrees(e.y)) + " " + fmtFloat(degrees(e.z));
+            }
             return fmtFloat(v[0]) + " " + fmtFloat(v[1]) + " " + fmtFloat(v[2]) + " " + fmtFloat(v[3]);
         }
         case FieldType::Entity: {
@@ -186,8 +194,21 @@ bool Inspector::parse(const Field& f, std::string_view text, uint8_t* bytes) {
             std::memcpy(dst, v, 8);
             return true;
         }
+        case FieldType::Vec3: {
+            float v[3];
+            if (!parseFloats(text, v, 3)) return false;
+            std::memcpy(dst, v, 12);
+            return true;
+        }
         case FieldType::Vec4: {
             float v[4];
+            if (f.hint == FieldHint::Rotation) {   // Euler degrees -> quaternion
+                if (!parseFloats(text, v, 3)) return false;
+                const quat q = normalize(quat::euler({radians(v[0]), radians(v[1]), radians(v[2])}));
+                const float out[4] = {q.x, q.y, q.z, q.w};
+                std::memcpy(dst, out, 16);
+                return true;
+            }
             if (!parseFloats(text, v, 4)) return false;
             std::memcpy(dst, v, 16);
             return true;

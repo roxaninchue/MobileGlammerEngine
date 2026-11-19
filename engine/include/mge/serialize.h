@@ -19,19 +19,21 @@
 
 namespace mge::serial {
 
-// v2 (M2 #22) added the Vec4, I16, U16 and Str32 field types; v1 files still load.
-constexpr uint32_t kFormatVersion = 2;
+// v2 (M2 #22) added the Vec4, I16, U16 and Str32 field types; v3 (M3 #26) added Vec3.
+// Older files still load.
+constexpr uint32_t kFormatVersion = 3;
 constexpr uint32_t kMinFormatVersion = 1;
 
 // Str32: char[32], UTF-8, NUL-terminated (at most 31 bytes of text). JSON: a string.
-enum class FieldType : uint8_t { F32, I32, U32, Vec2, Entity, Vec4, I16, U16, Str32 };
-constexpr FieldType kLastFieldType = FieldType::Str32;
+enum class FieldType : uint8_t { F32, I32, U32, Vec2, Entity, Vec4, I16, U16, Str32, Vec3 };
+constexpr FieldType kLastFieldType = FieldType::Vec3;
 uint32_t fieldSize(FieldType t);   // bytes in memory and on disk
 
 // How the editor shows a field (data is unchanged): Angle = radians shown in degrees,
 // Color = packed RGBA8 (R in the low byte), Bool = 0/1 toggle, Hidden = not in the inspector,
-// Enum = an integer picked by name from `enumNames` ("Static|Kinematic|Dynamic" = 0, 1, 2).
-enum class FieldHint : uint8_t { None, Angle, Color, Bool, Hidden, Enum };
+// Enum = an integer picked by name from `enumNames` ("Static|Kinematic|Dynamic" = 0, 1, 2),
+// Rotation = a quaternion (Vec4 x y z w) shown and edited as Euler degrees "pitch yaw roll".
+enum class FieldHint : uint8_t { None, Angle, Color, Bool, Hidden, Enum, Rotation };
 
 struct Field {
     const char* name;

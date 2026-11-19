@@ -37,6 +37,8 @@ add_library(mge_core STATIC
     src/editor/gizmo.cpp
     src/editor/play_session.cpp
     src/editor/project.cpp
+    src/scene/transform3d.cpp
+    src/render/mesh.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(mge_core PUBLIC Threads::Threads)
@@ -67,7 +69,9 @@ if(MGE_BUILD_TESTS AND NOT ANDROID)
         tests/test_editor_session.cpp
         tests/test_editor_gizmo.cpp
         tests/test_editor_play.cpp
-        tests/test_editor_project.cpp)
+        tests/test_editor_project.cpp
+        tests/test_transform3d.cpp
+        tests/test_mesh.cpp)
     target_link_libraries(mge_tests PRIVATE mge_core)
     target_compile_definitions(mge_tests PRIVATE MGE_FORCE_ASSERTS)
     add_test(NAME mge_tests COMMAND mge_tests)
