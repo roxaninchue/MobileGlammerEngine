@@ -19,6 +19,7 @@ data class EditorState(
     val inspector: InspectedEntity? = null,
     val gizmo: GizmoSettings = GizmoSettings(),
     val play: PlayInfo = PlayInfo(),
+    val project: ProjectState = ProjectState(),
 ) {
     val canUndo get() = undoLabel.isNotEmpty()
     val canRedo get() = redoLabel.isNotEmpty()
@@ -78,6 +79,12 @@ data class EditorState(
                     steps = p.optLong("steps", 0),
                 )
             } ?: PlayInfo()
+            val project = o.optJSONObject("project")?.let { p ->
+                ProjectState(
+                    name = p.optString("name"),
+                    list = p.optJSONArray("list").objects().map { ProjectEntry(it.optString("name"), it.optLong("modified")) },
+                )
+            } ?: ProjectState()
             return EditorState(
                 revision = o.optLong("rev", -1),
                 undoLabel = o.optString("undo"),
@@ -89,6 +96,7 @@ data class EditorState(
                 inspector = insp,
                 gizmo = gizmo,
                 play = play,
+                project = project,
             )
         }
 
@@ -187,3 +195,11 @@ data class PlayInfo(val state: PlayState = PlayState.Editing, val time: Float = 
     val playing get() = state == PlayState.Playing
     val paused get() = state == PlayState.Paused
 }
+
+/** The open project ("" = none) and every project on the device, newest first. */
+data class ProjectState(val name: String = "", val list: List<ProjectEntry> = emptyList()) {
+    val isOpen get() = name.isNotEmpty()
+}
+
+/** A saved project: display name and last save time (unix seconds). */
+data class ProjectEntry(val name: String, val modified: Long)

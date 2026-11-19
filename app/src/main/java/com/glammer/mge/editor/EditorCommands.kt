@@ -32,6 +32,12 @@ object EditorCommands {
     fun pause() = "pause"
     fun step() = "step"
     fun stop() = "stop"
+    fun save() = "save"
+    fun saveAs(name: String) = "saveas ${clean(name)}"
+    fun open(name: String) = "open ${clean(name)}"
+    fun newProject(name: String = "") = "newproject ${clean(name)}".trimEnd()
+    fun renameProject(name: String) = "renameproject ${clean(name)}"
+    fun deleteProject(name: String) = "deleteproject ${clean(name)}"
     fun redo() = "redo"
 
     /** One line: newlines and tabs become spaces, surrounding blanks trimmed. */
@@ -130,4 +136,55 @@ class PlayControls(private val play: PlayInfo) {
     /** "12.34 s · 741 steps" while playing or paused, empty while editing. */
     val clock: String
         get() = if (!play.active) "" else String.format(Locale.ROOT, "%.2f s · %d steps", play.time, play.steps)
+}
+
+/**
+ * Project rules shared with the engine (mge/editor/project.h): names, folder slugs, and the
+ * protocol lines for switching projects without losing unsaved work.
+ */
+object Projects {
+    const val MAX_NAME = 48
+
+    /** Folder name the engine stores a project under: "My Game!" -> "my-game". */
+    fun slug(name: String): String {
+        val sb = StringBuilder()
+        for (c in name.trim()) {
+            val l = if (c in 'A'..'Z') c + ('a' - 'A') else c
+            if (l in 'a'..'z' || l in '0'..'9') sb.append(l)
+            else if (sb.isNotEmpty() && sb.last() != '-') sb.append('-')
+        }
+        return sb.toString().trimEnd('-')
+    }
+
+    fun isValidName(name: String): Boolean {
+        val t = name.trim()
+        return t.isNotEmpty() && t.toByteArray(Charsets.UTF_8).size <= MAX_NAME && t.none { it < ' ' || it == '\u007F' } && slug(t).isNotEmpty()
+    }
+
+    /** True when [name] is another project's (same folder), so "save as" would be refused. */
+    fun takenByOther(state: ProjectState, name: String): Boolean {
+        val s = slug(name)
+        return s != slug(state.name) && state.list.any { slug(it.name) == s }
+    }
+
+    /**
+     * Lines to leave the open project for [target] (open, or new when [create]): saved first
+     * when [saveFirst], otherwise unsaved changes are dropped.
+     */
+    fun switchTo(target: String, saveFirst: Boolean, create: Boolean = false): List<String> =
+        (if (saveFirst) listOf(EditorCommands.save()) else emptyList()) +
+            (if (create) EditorCommands.newProject(target) else EditorCommands.open(target))
+
+    /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", else the date (yyyy-MM-dd). */
+    fun ago(modified: Long, nowSec: Long): String {
+        val d = nowSec - modified
+        return when {
+            d < 60 -> "just now"
+            d < 3600 -> "${d / 60} min ago"
+            d < 86400 -> "${d / 3600} h ago"
+            d < 2 * 86400 -> "yesterday"
+            d < 7 * 86400 -> "${d / 86400} days ago"
+            else -> java.time.Instant.ofEpochSecond(modified).atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
+        }
+    }
 }
