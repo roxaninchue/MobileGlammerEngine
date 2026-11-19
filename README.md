@@ -97,6 +97,26 @@ the finger lifts (`seal()`). `begin()`/`end()` group a multi-entity edit into on
 is capped (256 steps / 8 MiB by default, oldest dropped first), `isDirty()` tracks the last save
 across undo, redo and merges, and `lock()` freezes editing while the game plays in the editor.
 
+## Editor: hierarchy and inspector
+The app opens the editor (`mge/editor/editor_session.h`) on a small starter scene. Compose panels
+float over the viewport: the hierarchy (tap to select, arrow to expand, long press for rename,
+add child, duplicate, delete, move up/down, indent/outdent) and the inspector, which lists every
+registered component of the selection from the serialization registry, so new components show
+up without UI code. Fields edit as text (`FieldHint` picks degrees, `#RRGGBBAA` colours or a
+switch); drag a field's label to scrub it, and the whole drag is one undo step. Reparenting keeps
+the entity where it is on screen. In the viewport, tap selects (topmost sprite), drag pans,
+pinch zooms, double tap resets the view.
+
+The panels never hold scene data: they send one-line commands (`select 3`,
+`set 3 Transform2D position 1 2`, `undo`...) through `NativeEngine.editorCommand`, the render
+thread applies them, and the panel state comes back as JSON stamped with a revision. The editor
+renders on demand: with nothing changing it draws no frames at all. The M1 physics demo is still
+there: `adb shell setprop debug.mge.demo 1` (benchmarks select it automatically).
+
+Scene format v2 adds `Vec4`, `I16`, `U16` and `Str32` fields (v1 scenes still load) and the
+`Name` component; `SpriteRenderer` is now saved with scenes (tint and UVs; textures come with
+the asset browser).
+
 ## License
 Proprietary, Copyright (c) 2026 Lackson Kapapa, trading as Blazeinchue. All rights reserved. Public for viewing only. See LICENSE.
 
