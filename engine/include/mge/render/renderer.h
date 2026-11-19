@@ -38,6 +38,9 @@ public:
     // Returns false if the frame was skipped (e.g. swapchain being rebuilt).
     virtual bool renderFrame(const FrameInfo& frame) = 0;
     virtual void waitIdle() = 0;
+    // True when the last frame went out stale (the display rotated) and the next frame will be
+    // laid out correctly: an on-demand loop should draw once more even if nothing changed.
+    virtual bool wantsFrame() const { return false; }
 
     // Size in the app's orientation (pre-rotation undone), for camera aspect.
     virtual void viewportSize(uint32_t& width, uint32_t& height) const = 0;

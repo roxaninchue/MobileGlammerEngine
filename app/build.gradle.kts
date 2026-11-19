@@ -59,6 +59,11 @@ android {
     buildFeatures { compose = true }
 }
 
+composeCompiler {
+    // The editor UI model is immutable; let Compose skip panels whose state did not change.
+    stabilityConfigurationFile = project.layout.projectDirectory.file("compose_stability.conf")
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)

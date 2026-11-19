@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,24 +97,31 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(12.dp)
                     )
                 }
-                // Live engine stats (frame time, draw calls, bodies, memory), polled twice a second.
-                var stats by remember { mutableStateOf("") }
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        stats = NativeEngine.stats()
-                        delay(500)
-                    }
-                }
-                Text(
-                    stats,
-                    color = Color(0xFFB8F5C0),
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(12.dp)
-                )
+                // Live engine stats, in their own composable so the half-second refresh
+                // recomposes only this text, never the editor panels (that hitched scrolling).
+                EngineStats(Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(12.dp))
             }
         }
+    }
+
+    /** Frame time, draw calls, bodies and memory, polled twice a second. */
+    @Composable
+    private fun EngineStats(modifier: Modifier) {
+        var stats by remember { mutableStateOf("") }
+        LaunchedEffect(Unit) {
+            while (true) {
+                stats = NativeEngine.stats()
+                delay(500)
+            }
+        }
+        Text(
+            stats,
+            color = Color(0xFFB8F5C0),
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = modifier,
+        )
     }
 
     override fun onResume() { super.onResume(); NativeEngine.resume() }

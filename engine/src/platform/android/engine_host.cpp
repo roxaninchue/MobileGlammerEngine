@@ -314,7 +314,8 @@ void EngineHost::editorLoop(const char* backendName) {
             drawnRev = session.revision();
             ++frames;
         }
-        redraw = viewport.needsRedraw();
+        // A rotation found at present leaves the frame stale until the swapchain is rebuilt.
+        redraw = viewport.needsRedraw() || (renderer_ && renderer_->wantsFrame());
 
         if (renderer_ && t0 - lastStats >= std::chrono::milliseconds(500)) {
             const render::RenderStats rs = renderer_->lastFrameStats();

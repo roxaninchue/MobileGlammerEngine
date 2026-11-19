@@ -6,11 +6,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +56,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicLong
 
@@ -78,18 +83,26 @@ fun EditorOverlay(state: EditorState, send: (String) -> Unit, modifier: Modifier
     var showHierarchy by remember { mutableStateOf(true) }
     var showInspector by remember { mutableStateOf(true) }
     var showProjects by remember { mutableStateOf(false) }
-    Column(modifier) {
-        EditorToolbar(
-            state, send,
-            showHierarchy, { showHierarchy = !showHierarchy },
-            showInspector, { showInspector = !showInspector },
-            openProjects = { showProjects = true },
-        )
-        Row(Modifier.fillMaxWidth().weight(1f)) {
-            if (showHierarchy) HierarchyPanel(state, send, Modifier.width(220.dp).fillMaxHeight())
-            Spacer(Modifier.weight(1f))
-            val insp = state.inspector
-            if (showInspector && insp != null) InspectorPanel(insp, state.locked, send, Modifier.width(300.dp).fillMaxHeight())
+    BoxWithConstraints(modifier) {
+        // Phones in portrait (and small landscape screens) have room for one panel at a time.
+        val width = maxWidth
+        val compact = width < 600.dp
+        LaunchedEffect(compact) { if (compact && showHierarchy && showInspector) showHierarchy = false }
+        Column(Modifier.fillMaxSize()) {
+            EditorToolbar(
+                state, send,
+                showHierarchy, { showHierarchy = !showHierarchy; if (compact && showHierarchy) showInspector = false },
+                showInspector, { showInspector = !showInspector; if (compact && showInspector) showHierarchy = false },
+                openProjects = { showProjects = true },
+            )
+            Row(Modifier.fillMaxWidth().weight(1f)) {
+                if (showHierarchy) HierarchyPanel(state, send, Modifier.width(min(220.dp, width)).fillMaxHeight())
+                Spacer(Modifier.weight(1f))
+                val insp = state.inspector
+                if (showInspector && insp != null) {
+                    InspectorPanel(insp, state.locked, send, Modifier.width(min(300.dp, width)).fillMaxHeight())
+                }
+            }
         }
     }
     if (showProjects) ProjectsDialog(state, send, onDismiss = { showProjects = false })
@@ -115,36 +128,43 @@ private fun EditorToolbar(
         Modifier.fillMaxWidth().background(bar).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolButton("☰", hierarchyShown, onClick = toggleHierarchy)
-        // Project: name opens the projects dialog; ⤓ saves (also while playing: the scene from before play).
-        TextButton(onClick = openProjects) {
-            Text(
-                (state.project.name.ifEmpty { "Projects" }) + " ▾", color = TextMain, fontSize = 13.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp),
-            )
+        // Everything but the panel toggle scrolls sideways, so narrow screens (phones in
+        // portrait) still reach the play controls and gizmo tools.
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ToolButton("☰", hierarchyShown, onClick = toggleHierarchy)
+            // Project: name opens the projects dialog; ⤓ saves (also while playing: the scene from before play).
+            TextButton(onClick = openProjects) {
+                Text(
+                    (state.project.name.ifEmpty { "Projects" }) + " ▾", color = TextMain, fontSize = 13.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp),
+                )
+            }
+            ToolButton("⤓", state.project.isOpen && state.dirty) { send(EditorCommands.save()) }
+            PlayGroup(state.play, send)
+            Spacer(Modifier.width(8.dp))
+            ToolButton("↶", state.canUndo && editable) { send(EditorCommands.undo()) }
+            ToolButton("↷", state.canRedo && editable) { send(EditorCommands.redo()) }
+            ToolButton("+", editable) { send(EditorCommands.create(0, "Entity")) }
+            ToolButton("⧉", editable && state.selection.isNotEmpty()) { send(EditorCommands.duplicate()) }
+            ToolButton("✕", editable && state.selection.isNotEmpty()) { send(EditorCommands.delete()) }
+            Spacer(Modifier.width(8.dp))
+            // Gizmo: mode, snapping, axis space.
+            for ((mode, glyph) in listOf(GizmoMode.Move to "✥", GizmoMode.Rotate to "⟳", GizmoMode.Scale to "⤡")) {
+                ToggleButton(glyph, state.gizmo.mode == mode, editable) { send(EditorCommands.gizmo(mode)) }
+            }
+            val g = state.gizmo
+            ToggleButton("#", g.snap, editable) { send(EditorCommands.snap(!g.snap, g.grid, g.angle, g.scaleStep)) }
+            ToggleButton(if (g.local) "L" else "W", g.local, editable) { send(EditorCommands.space(!g.local)) }
+            if (state.canUndo && !state.play.active) {
+                Text(
+                    "Undo: ${state.undoLabel}", color = TextDim, fontSize = 11.sp, maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 8.dp).widthIn(max = 160.dp), overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-        ToolButton("⤓", state.project.isOpen && state.dirty) { send(EditorCommands.save()) }
-        ToolButton("↶", state.canUndo && editable) { send(EditorCommands.undo()) }
-        ToolButton("↷", state.canRedo && editable) { send(EditorCommands.redo()) }
-        ToolButton("+", editable) { send(EditorCommands.create(0, "Entity")) }
-        ToolButton("⧉", editable && state.selection.isNotEmpty()) { send(EditorCommands.duplicate()) }
-        ToolButton("✕", editable && state.selection.isNotEmpty()) { send(EditorCommands.delete()) }
-        Spacer(Modifier.width(8.dp))
-        // Gizmo: mode, snapping, axis space.
-        for ((mode, glyph) in listOf(GizmoMode.Move to "✥", GizmoMode.Rotate to "⟳", GizmoMode.Scale to "⤡")) {
-            ToggleButton(glyph, state.gizmo.mode == mode, editable) { send(EditorCommands.gizmo(mode)) }
-        }
-        val g = state.gizmo
-        ToggleButton("#", g.snap, editable) { send(EditorCommands.snap(!g.snap, g.grid, g.angle, g.scaleStep)) }
-        ToggleButton(if (g.local) "L" else "W", g.local, editable) { send(EditorCommands.space(!g.local)) }
-        Spacer(Modifier.weight(1f))
-        PlayGroup(state.play, send)
-        Spacer(Modifier.weight(1f))
-        Text(
-            if (state.canUndo && !state.play.active) "Undo: ${state.undoLabel}" else "",
-            color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
         if (state.dirty) Text("●", color = Accent, fontSize = 12.sp)
         ToolButton("⚙", inspectorShown, onClick = toggleInspector)
     }

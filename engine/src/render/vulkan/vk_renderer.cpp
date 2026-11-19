@@ -118,6 +118,7 @@ public:
         VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, f.acquired, VK_NULL_HANDLE, &image);
         if (r == VK_ERROR_OUT_OF_DATE_KHR) { swapchainDirty_ = true; return false; }
         if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) { MGE_LOGE("acquire failed: %d", int(r)); return false; }
+        if (r == VK_SUBOPTIMAL_KHR && orientationChanged()) swapchainDirty_ = true;   // rebuilt next frame
         vkResetFences(device_, 1, &f.fence);
 
         // Fill this frame's instance buffer (the fence above proves the GPU is done with it).
@@ -181,14 +182,31 @@ public:
         pi.pSwapchains = &swapchain_;
         pi.pImageIndices = &image;
         r = vkQueuePresentKHR(queue_, &pi);
-        // SUBOPTIMAL on Android usually means rotation changed; we pre-rotate so only rebuild on OUT_OF_DATE.
-        if (r == VK_ERROR_OUT_OF_DATE_KHR) swapchainDirty_ = true;
+        // SUBOPTIMAL on Android means the display rotated. We pre-rotate, so the swapchain still
+        // works, but it must be rebuilt for the new transform: otherwise the frame is laid out
+        // for the old orientation and the compositor squashes it into the new one. (A rotation
+        // can also reach us through surfaceChanged before currentTransform has updated, so the
+        // rebuild there may still see the old transform; this catches it on the next present.)
+        if (r == VK_ERROR_OUT_OF_DATE_KHR || (r == VK_SUBOPTIMAL_KHR && orientationChanged())) swapchainDirty_ = true;
 
         frameIndex_ = (frameIndex_ + 1) % kFramesInFlight;
         return true;
     }
 
+    // The surface's transform or size no longer matches the swapchain.
+    bool orientationChanged() {
+        VkSurfaceCapabilitiesKHR caps{};
+        if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu_, surface_, &caps) != VK_SUCCESS) return false;
+        VkExtent2D e = caps.currentExtent;
+        if (caps.currentTransform & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR))
+            std::swap(e.width, e.height);
+        const bool changed = caps.currentTransform != transform_ || e.width != extent_.width || e.height != extent_.height;
+        if (changed) MGE_LOGI("Surface rotated (transform 0x%x -> 0x%x), rebuilding swapchain", unsigned(transform_), unsigned(caps.currentTransform));
+        return changed;
+    }
+
     void waitIdle() override { if (device_) vkDeviceWaitIdle(device_); }
+    bool wantsFrame() const override { return swapchainDirty_; }
 
     void viewportSize(uint32_t& w, uint32_t& h) const override {
         bool swapped = transform_ & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR);
