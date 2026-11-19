@@ -168,6 +168,79 @@ void EditorSession::buildStarter() {
     ++selRev_;
 }
 
+// ------------------------------------------------------------------ projects (M2 #25)
+bool EditorSession::openProjects(std::string root) {
+    projects_ = std::make_unique<ProjectStore>(std::move(root));
+    if (!projects_->ok()) { projects_.reset(); return false; }
+    refreshProjects();
+    const std::string last = projects_->last();
+    if (!last.empty() && openProject(last)) return true;
+    if (!projectList_.empty() && openProject(projectList_.front().name)) return true;
+    newScene(true);
+    return saveProject(projects_->uniqueName("My Game"));
+}
+
+std::string EditorSession::sceneJson() {
+    if (!play_.active()) return serial::saveJson(*world_, reg_);
+    // Playing: the project is the scene from before play, kept as the play snapshot.
+    ecs::World tmp;
+    const std::vector<uint8_t>& snap = play_.snapshot();
+    if (!serial::loadBinary(tmp, reg_, snap.data(), snap.size())) return {};
+    return serial::saveJson(tmp, reg_);
+}
+
+bool EditorSession::loadSceneJson(std::string_view json) {
+    {
+        ecs::World probe;   // validate first: a bad file must not cost the open scene
+        if (!serial::loadJson(probe, reg_, json)) return false;
+    }
+    rebuild();
+    const bool ok = serial::loadJson(*world_, reg_, json);
+    doc_->adopt();
+    doc_->touch();
+    stack_->clear();
+    stack_->markSaved();
+    update();
+    return ok;
+}
+
+bool EditorSession::saveProject(const std::string& name) {
+    if (!projects_) return false;
+    const std::string json = sceneJson();
+    if (json.empty() || !projects_->save(name, json)) return false;
+    project_ = ProjectStore::trimName(name);
+    projects_->setLast(project_);
+    if (!play_.active()) stack_->markSaved();   // while playing the edit state is the snapshot
+    refreshProjects();
+    return true;
+}
+
+bool EditorSession::openProject(std::string_view name) {
+    std::string json;
+    if (!projects_ || !projects_->load(name, json)) return false;
+    if (!loadSceneJson(json)) {
+        MGE_LOGE("projects: '%.*s' has an unreadable scene", int(name.size()), name.data());
+        return false;
+    }
+    project_ = ProjectStore::trimName(name);
+    for (const ProjectInfo& p : projectList_)
+        if (p.slug == ProjectStore::slugFor(name)) project_ = p.name;
+    projects_->setLast(project_);
+    refreshProjects();
+    return true;
+}
+
+void EditorSession::refreshProjects() {
+    projectList_ = projects_ ? projects_->list() : std::vector<ProjectInfo>{};
+    ++selRev_;
+}
+
+bool EditorSession::autosave() {
+    if (!projects_ || project_.empty()) return false;
+    if (!stack_->isDirty()) return true;
+    return saveProject(project_);
+}
+
 void EditorSession::select(Uid uid, bool toggle) {
     if (toggle) selection_.toggle(uid);
     else selection_.set(uid);
@@ -256,6 +329,34 @@ bool EditorSession::handle(std::string_view line) {
                 : cmd == "step" ? play_.step(*this) : play_.stop(*this);
         if (ok) { ++selRev_; playTick_ = -1; }
         return ok;
+    }
+    if (cmd == "save") return !project_.empty() && saveProject(project_);
+    if (cmd == "saveas" || cmd == "newproject" || cmd == "open" || cmd == "renameproject" || cmd == "deleteproject") {
+        if (!projects_) return false;
+        const std::string name = ProjectStore::trimName(rest(s));
+        const std::string slug = ProjectStore::slugFor(name);
+        if (cmd == "newproject") {
+            const std::string made = projects_->uniqueName(name.empty() ? "Untitled" : name);
+            newScene(false);
+            return saveProject(made);
+        }
+        if (!ProjectStore::validName(name)) return false;
+        const bool isOpen = !project_.empty() && slug == ProjectStore::slugFor(project_);
+        if (cmd == "open") return openProject(name);
+        if (cmd == "saveas") {
+            if (!isOpen && projects_->exists(name)) return false;   // never overwrite another project
+            return saveProject(name);
+        }
+        if (cmd == "renameproject") {
+            if (project_.empty() || !projects_->rename(project_, name)) return false;
+            project_ = name;
+            refreshProjects();
+            return true;
+        }
+        // deleteproject: never the open one.
+        if (isOpen || !projects_->remove(name)) return false;
+        refreshProjects();
+        return true;
     }
     if (cmd == "undo") return stack_->undo();
     if (cmd == "redo") return stack_->redo();
@@ -382,6 +483,16 @@ std::string EditorSession::stateJson() {
                       states[int(play_.state())], double(play_.time()), play_.steps());
         o += buf;
     }
+    o += ",\"project\":{\"name\":";
+    appendJsonString(o, project_);
+    o += ",\"list\":[";
+    for (size_t i = 0; i < projectList_.size(); ++i) {
+        if (i) o += ',';
+        o += "{\"name\":";
+        appendJsonString(o, projectList_[i].name);
+        o += ",\"modified\":" + std::to_string(projectList_[i].modified) + "}";
+    }
+    o += "]}";
     o += ",\"rows\":[";
     bool first = true;
     for (const TreeRow& r : hierarchy_->rows(selection_)) {

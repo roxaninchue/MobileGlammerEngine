@@ -41,6 +41,8 @@ public:
     uint32_t steps() const { return steps_; }     // fixed physics steps since play()
     physics2d::PhysicsSystem2D* physics() { return physics_.get(); }
     size_t snapshotBytes() const { return snapshot_.size(); }
+    // The scene as it was at play() (binary); empty while editing.
+    const std::vector<uint8_t>& snapshot() const { return snapshot_; }
 
     physics2d::WorldDef worldDef;   // gravity etc. for the next play()
 

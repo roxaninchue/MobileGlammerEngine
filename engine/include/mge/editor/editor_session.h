@@ -12,9 +12,14 @@
 //        gizmo <move|rotate|scale>                    space <world|local>
 //        snap <0|1> [grid] [angleDeg] [scaleStep]
 //        play                   pause                 step                  stop
+//        save                   saveas <name>         open <name>           newproject [name]
+//        renameproject <name>   deleteproject <name>
 //    Parent 0 means the scene root. Returns false for unknown or rejected commands.
 //  - stateJson(): what the panels show (tree rows, inspector of the primary selection,
-//    undo/redo labels, dirty flag), stamped with revision() so the UI re-reads only on change.
+//    undo/redo labels, dirty flag, play state, open project and the project list), stamped with
+//    revision() so the UI re-reads only on change.
+//  - Projects (M2 #25): openProjects(root) reopens the last project; save writes the scene as
+//    it was before play when playing; open/new replace the scene and clear the history.
 // Pure CPU code in mge_core, covered by host tests.
 #include <memory>
 #include <string>
@@ -24,6 +29,7 @@
 #include "mge/editor/hierarchy.h"
 #include "mge/editor/inspector.h"
 #include "mge/editor/play_session.h"
+#include "mge/editor/project.h"
 #include "mge/render/sprite_batch.h"
 #include "mge/render/sprite_system.h"
 #include "mge/serialize.h"
@@ -46,6 +52,20 @@ public:
     // Topmost visible sprite under a world point (highest layer, then latest in hierarchy).
     Uid pick(vec2 world);
     void select(Uid uid, bool toggle = false);
+
+    // Projects (M2 #25): opens the store at `root` and reopens the last project, or creates
+    // "My Game" with the starter scene the first time. False when the folder is unusable (the
+    // session keeps editing a scene that is not saved anywhere).
+    bool openProjects(std::string root);
+    // Saves the open project if it has unsaved changes (the app is going to the background).
+    bool autosave();
+    // The scene as a project saves it: while playing, the scene from before play.
+    std::string sceneJson();
+    // Replaces the scene with `json` (history cleared, saved state). On a bad file the current
+    // scene stays and false is returned.
+    bool loadSceneJson(std::string_view json);
+    const std::string& projectName() const { return project_; }
+    ProjectStore* projects() { return projects_.get(); }
 
     // Advances play mode by `dt` (no-op while editing); true when the scene changed.
     bool tick(float dt);
@@ -72,6 +92,9 @@ public:
 private:
     void rebuild();   // fresh world + doc + stack over the same registry
     void buildStarter();
+    bool saveProject(const std::string& name);
+    bool openProject(std::string_view name);
+    void refreshProjects();
 
     serial::Registry reg_;
     std::unique_ptr<ecs::World> world_;
@@ -83,6 +106,9 @@ private:
     Selection selection_;
     Gizmo gizmo_;
     PlaySession play_;
+    std::unique_ptr<ProjectStore> projects_;
+    std::string project_;                  // open project's display name ("" = none)
+    std::vector<ProjectInfo> projectList_;  // cached for stateJson, refreshed on store changes
     int playTick_ = -1;   // last quarter second of play time the UI was told about
     uint64_t selRev_ = 0;   // selection changes; rebuild() seeds it so revision() keeps increasing
 };
