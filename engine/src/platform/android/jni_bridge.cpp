@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
+#include <string>
 #include "engine_host.h"
 
 using mge::engineHost;
@@ -75,6 +76,23 @@ Java_com_glammer_mge_NativeEngine_setDensity(JNIEnv*, jobject, jfloat density) {
 JNIEXPORT jstring JNICALL
 Java_com_glammer_mge_NativeEngine_stats(JNIEnv* env, jobject) {
     return env->NewStringUTF(engineHost().statsText().c_str());
+}
+
+// Editor panel channel (M2 #22): one protocol line per call, applied on the render thread.
+JNIEXPORT void JNICALL
+Java_com_glammer_mge_NativeEngine_editorCommand(JNIEnv* env, jobject, jstring line) {
+    const char* c = env->GetStringUTFChars(line, nullptr);
+    if (!c) return;
+    engineHost().editorCommand(c);
+    env->ReleaseStringUTFChars(line, c);
+}
+
+// Panel state JSON, or null when its revision is still `sinceRevision`.
+JNIEXPORT jstring JNICALL
+Java_com_glammer_mge_NativeEngine_editorState(JNIEnv* env, jobject, jlong sinceRevision) {
+    std::string json;
+    if (!engineHost().editorState(uint64_t(sinceRevision), json)) return nullptr;
+    return env->NewStringUTF(json.c_str());
 }
 
 JNIEXPORT void JNICALL

@@ -31,6 +31,8 @@ public:
     // True when the last frame changed what is on screen (camera moved, input arrived) or a
     // fling is still running.
     bool needsRedraw() const { return moved_ || lengthSq(fling_) > 1e-4f; }
+    // A finger is down: keep ticking frames so time-based gestures (long press) can fire.
+    bool touching() const { return gestures_.pointerCount() > 0; }
     // Gestures recognized during the last frame (the gizmo layer reads them too).
     const std::vector<input::Gesture>& gestures() const { return frameGestures_; }
 

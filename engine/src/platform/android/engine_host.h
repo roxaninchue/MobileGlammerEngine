@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 #include "mge/input.h"
 #include "mge/render/renderer.h"
 
@@ -24,14 +25,32 @@ public:
     void destroy();
 
     // UI thread: raw touch events (surface pixels, CLOCK_MONOTONIC ns). Never blocks on a frame.
-    void touch(const input::TouchEvent& e) { touches_.push(e); }
+    void touch(const input::TouchEvent& e);
+    // Editor panel channel (any thread): one protocol line (see mge/editor/editor_session.h),
+    // applied on the render thread before the next frame.
+    void editorCommand(std::string line);
+    // Latest panel state JSON when its revision differs from `sinceRevision`; false otherwise.
+    bool editorState(uint64_t sinceRevision, std::string& out);
     // Screen density (px per dp) for gesture thresholds.
     void setDensity(float density);
     // Latest on-screen stats (a few short lines), refreshed twice a second. Any thread.
     std::string statsText();
 
 private:
+    struct FrameState {
+        ANativeWindow* window = nullptr;
+        render::Insets insets{};
+        bool windowChanged = false, sizeChanged = false, densityChanged = false;
+        float density = 1.0f;
+    };
     void renderLoop();
+    void editorLoop(const char* backendName);
+    void demoLoop(const char* backendName);
+    // Blocks until a frame is wanted (always when `wantFrame`, else on input / commands /
+    // surface changes), then applies window and size changes. False when quitting.
+    bool nextFrame(bool wantFrame, FrameState& fs);
+    void endFrame(FrameState& fs);
+    void wakeUp();
 
     AAssetManager* assets_ = nullptr;
     std::string dataPath_;
@@ -49,6 +68,11 @@ private:
     bool quit_ = false;
     bool windowDirty_ = false;
     bool sizeDirty_ = false;
+    bool wake_ = false;
+    std::mutex editorMutex_;
+    std::vector<std::string> editorCommands_;
+    std::string editorStateJson_;
+    uint64_t editorRevision_ = 0;
     std::mutex statsMutex_;
     std::string statsText_;
     render::Renderer* renderer_ = nullptr;

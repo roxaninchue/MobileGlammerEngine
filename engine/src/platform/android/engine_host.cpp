@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include "mge/demo/demo_scene.h"
+#include "mge/editor/editor_session.h"
+#include "mge/editor/editor_viewport.h"
 #include "mge/jobs.h"
 #include "mge/perf/frame_stats.h"
 #include "mge/render/camera.h"
@@ -92,18 +94,50 @@ void EngineHost::setInsets(int left, int top, int right, int bottom) {
     std::lock_guard lock(mutex_);
     auto clampPx = [](int v) { return uint32_t(v > 0 ? v : 0); };
     insets_ = {clampPx(left), clampPx(top), clampPx(right), clampPx(bottom)};
+    wake_ = true;
     cv_.notify_one();
+}
+
+void EngineHost::touch(const input::TouchEvent& e) {
+    touches_.push(e);
+    wakeUp();
+}
+
+void EngineHost::wakeUp() {
+    {
+        std::lock_guard lock(mutex_);
+        wake_ = true;
+    }
+    cv_.notify_one();
+}
+
+void EngineHost::editorCommand(std::string line) {
+    {
+        std::lock_guard lock(editorMutex_);
+        editorCommands_.push_back(std::move(line));
+    }
+    wakeUp();
+}
+
+bool EngineHost::editorState(uint64_t sinceRevision, std::string& out) {
+    std::lock_guard lock(editorMutex_);
+    if (editorStateJson_.empty() || editorRevision_ == sinceRevision) return false;
+    out = editorStateJson_;
+    return true;
 }
 
 void EngineHost::setDensity(float density) {
     std::lock_guard lock(mutex_);
     density_ = density > 0.0f ? density : 1.0f;
     densityDirty_ = true;
+    wake_ = true;
+    cv_.notify_one();
 }
 
 void EngineHost::setPaused(bool paused) {
     std::lock_guard lock(mutex_);
     paused_ = paused;
+    wake_ = true;   // redraw once on resume
     cv_.notify_one();
 }
 
@@ -131,6 +165,152 @@ void EngineHost::renderLoop() {
     if (!renderer_) MGE_LOGE("No usable renderer (Vulkan and GLES3 both unavailable)");
     const char* backendName = !renderer_ ? "none" : (renderer_->backend() == render::Backend::Vulkan ? "Vulkan" : "GLES3");
 
+    // M2: the editor is the app. The M1 physics demo still runs for benchmarks
+    // (debug.mge.bench) or on request (debug.mge.demo = 1).
+    if (propInt("debug.mge.bench", 0) > 0 || propInt("debug.mge.demo", 0) != 0) demoLoop(backendName);
+    else editorLoop(backendName);
+
+    if (renderer_) {
+        renderer_->waitIdle();
+        if (attached_) { renderer_->detachWindow(); ANativeWindow_release(attached_); attached_ = nullptr; }
+        delete renderer_;
+        renderer_ = nullptr;
+    }
+    jobs::shutdown();
+    MGE_LOGI("Render thread stopped");
+}
+
+bool EngineHost::nextFrame(bool wantFrame, FrameState& fs) {
+    fs = {};
+    {
+        std::unique_lock lock(mutex_);
+        // Sleep (zero CPU) when paused, without a surface, or (editor) when nothing changed.
+        cv_.wait(lock, [&] {
+            return quit_ || (windowDirty_ && !window_) ||
+                   (!paused_ && window_ && (wantFrame || wake_ || windowDirty_ || sizeDirty_));
+        });
+        if (quit_) return false;
+        fs.windowChanged = windowDirty_;
+        fs.sizeChanged = sizeDirty_;
+        windowDirty_ = sizeDirty_ = wake_ = false;
+        fs.window = window_;
+        fs.insets = insets_;
+        fs.densityChanged = densityDirty_;
+        fs.density = density_;
+        densityDirty_ = false;
+        if (fs.window) ANativeWindow_acquire(fs.window);   // hold our own ref while we use it
+    }
+    if (renderer_) {
+        if (fs.windowChanged && attached_) {
+            renderer_->detachWindow();
+            ANativeWindow_release(attached_);
+            attached_ = nullptr;
+        }
+        if (fs.windowChanged && fs.window) {
+            if (renderer_->attachWindow(fs.window)) { attached_ = fs.window; ANativeWindow_acquire(attached_); }
+            else MGE_LOGE("attachWindow failed");
+        }
+        if (fs.sizeChanged && attached_) renderer_->resize(uint32_t(width_), uint32_t(height_));
+    }
+    return true;
+}
+
+void EngineHost::endFrame(FrameState& fs) {
+    if (!renderer_) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (fs.window) ANativeWindow_release(fs.window);
+    fs.window = nullptr;
+}
+
+// ------------------------------------------------------------------ editor (M2)
+void EngineHost::editorLoop(const char* backendName) {
+    using clock = std::chrono::steady_clock;
+    editor::EditorSession session;
+    session.newScene(true);
+    editor::EditorViewport viewport;   // 16 x 9 world units, Expand
+    input::GestureConfig gestureCfg;
+    render::SpriteBatcher batcher;
+    std::vector<input::TouchEvent> touchEvents;
+    touchEvents.reserve(256);
+    std::vector<std::string> commands;
+    uint64_t publishedRev = UINT64_MAX, drawnRev = UINT64_MAX;
+    bool redraw = true;
+    auto lastFrame = clock::now(), lastStats = clock::now() - std::chrono::seconds(1);
+    uint32_t frames = 0;
+
+    for (;;) {
+        // Render on demand: block until input, a command, a surface change or an animation.
+        FrameState fs;
+        if (!nextFrame(redraw || viewport.touching(), fs)) break;
+        if (fs.densityChanged) {
+            gestureCfg.density = fs.density;
+            viewport.setGestureConfig(gestureCfg);
+        }
+        if (fs.windowChanged || fs.sizeChanged) redraw = true;
+        const auto t0 = clock::now();
+        const float dt = min(std::chrono::duration<float>(t0 - lastFrame).count(), 0.1f);
+        lastFrame = t0;
+
+        // Panel commands first (they may change what a tap would pick), then touches.
+        {
+            std::lock_guard lock(editorMutex_);
+            commands.swap(editorCommands_);
+        }
+        for (const std::string& c : commands)
+            if (!session.handle(c)) MGE_LOGW("editor: rejected '%s'", c.c_str());
+        const bool hadCommands = !commands.empty();
+        commands.clear();
+        touchEvents.clear();
+        touches_.drain(touchEvents);
+
+        if (renderer_ && attached_) {
+            uint32_t vw = 0, vh = 0;
+            renderer_->viewportSize(vw, vh);
+            viewport.frame(session, touchEvents,
+                           std::chrono::duration_cast<std::chrono::nanoseconds>(t0.time_since_epoch()).count(), dt, vw, vh,
+                           fs.insets);
+        }
+        session.update();
+
+        // Publish the panel state when it changed (the UI polls editorState).
+        if (session.revision() != publishedRev) {
+            publishedRev = session.revision();
+            std::string json = session.stateJson();
+            std::lock_guard lock(editorMutex_);
+            editorStateJson_ = std::move(json);
+            editorRevision_ = publishedRev;
+        }
+
+        if (renderer_ && attached_ &&
+            (redraw || hadCommands || viewport.needsRedraw() || session.revision() != drawnRev)) {
+            const render::ScreenLayout& layout = viewport.layout();
+            batcher.begin(layout.camera);
+            session.draw(batcher, layout.pixelsPerUnit);
+            batcher.end();
+            render::FrameInfo fi;
+            fi.clearColor = {0.10f, 0.11f, 0.13f, 1};
+            fi.viewport = layout.viewport;
+            fi.sprites = &batcher;
+            if (!renderer_->renderFrame(fi)) std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            drawnRev = session.revision();
+            ++frames;
+        }
+        redraw = viewport.needsRedraw();
+
+        if (renderer_ && t0 - lastStats >= std::chrono::milliseconds(500)) {
+            const render::RenderStats rs = renderer_->lastFrameStats();
+            char text[256];
+            std::snprintf(text, sizeof text, "%s editor  entities %u  draws %u  sprites %u  frames drawn %u",
+                          backendName, session.world().aliveCount(), rs.drawCalls, rs.sprites, frames);
+            std::lock_guard lock(statsMutex_);
+            statsText_ = text;
+            lastStats = t0;
+        }
+        endFrame(fs);
+    }
+}
+
+// ------------------------------------------------------------------ M1 demo / benchmark
+void EngineHost::demoLoop(const char* backendName) {
     assets::TextureCacheConfig cacheCfg;
     cacheCfg.reader = assetReader;
     cacheCfg.user = assets_;
@@ -215,37 +395,14 @@ void EngineHost::renderLoop() {
     float lastRenderMs = 0.0f;
 
     for (;;) {
-        ANativeWindow* window = nullptr;
-        bool windowChanged = false, sizeChanged = false;
-        render::Insets insets;
-        {
-            std::unique_lock lock(mutex_);
-            // Sleep (zero CPU) when paused or without a surface: lean by default.
-            cv_.wait(lock, [&] { return quit_ || (!paused_ && window_) || (windowDirty_ && !window_); });
-            if (quit_) break;
-            windowChanged = windowDirty_;
-            sizeChanged = sizeDirty_;
-            windowDirty_ = sizeDirty_ = false;
-            window = window_;
-            insets = insets_;
-            if (densityDirty_) {
-                gestureCfg.density = density_;
-                inputMap.setConfig(gestureCfg);
-                densityDirty_ = false;
-            }
-            if (window) ANativeWindow_acquire(window);   // hold our own ref while we use it
+        FrameState fs;
+        if (!nextFrame(true, fs)) break;
+        if (fs.densityChanged) {
+            gestureCfg.density = fs.density;
+            inputMap.setConfig(gestureCfg);
         }
+        const render::Insets insets = fs.insets;
         if (renderer_) {
-            if (windowChanged && attached_) {
-                renderer_->detachWindow();
-                ANativeWindow_release(attached_);
-                attached_ = nullptr;
-            }
-            if (windowChanged && window) {
-                if (renderer_->attachWindow(window)) { attached_ = window; ANativeWindow_acquire(attached_); }
-                else MGE_LOGE("attachWindow failed");
-            }
-            if (sizeChanged && attached_) renderer_->resize(uint32_t(width_), uint32_t(height_));
             if (attached_) {
                 textures.update();
                 if (!atlasResolved && textures.state(atlas) != assets::TextureCache::State::Loading) {
@@ -398,22 +555,15 @@ void EngineHost::renderLoop() {
                     lastReport = t3;
                 }
             }
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        if (window) ANativeWindow_release(window);
+        endFrame(fs);
     }
     textures.release(atlas);
     if (renderer_) {
         renderer_->waitIdle();
         renderer_->destroyTexture(atlasGpu);
-        if (attached_) { renderer_->detachWindow(); ANativeWindow_release(attached_); attached_ = nullptr; }
-        delete renderer_;
-        renderer_ = nullptr;
     }
     textures.waitAll();
-    jobs::shutdown();
-    MGE_LOGI("Render thread stopped");
 }
 
 }
